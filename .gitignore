@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+servicos.db
+venv/
+.env

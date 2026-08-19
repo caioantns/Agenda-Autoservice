@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block titulo %}Agenda - Agenda Autoservice{% endblock %}
+
+{% block conteudo %}
+<h2 class="titulo-pagina">📅 Agenda</h2>
+
+<div class="filtro-tecnico">
+  <label for="filtro-tecnico">Técnico:</label>
+  {% if session.get('role') == 'admin' %}
+  <select id="filtro-tecnico" onchange="mudarFiltroTecnico()">
+    <option value="Todos">Todos</option>
+    {% for t in tecnicos %}
+    <option value="{{ t }}">{{ t }}</option>
+    {% endfor %}
+  </select>
+  {% else %}
+  <select id="filtro-tecnico" disabled>
+    <option value="{{ session.get('tecnico_nome', '') }}" selected>{{ session.get('tecnico_nome', '') }}</option>
+  </select>
+  {% endif %}
+  <span id="proximos-7-dias" class="chip-info"></span>
+</div>
+
+<div class="cartao calendario-cartao">
+  <div class="calendario-cabecalho">
+    <button type="button" class="botao-icone" onclick="mesAnterior()">‹</button>
+    <span id="calendario-mes-ano" class="calendario-titulo"></span>
+    <button type="button" class="botao-icone" onclick="proximoMes()">›</button>
+  </div>
+  <div class="calendario-dias-semana">
+    <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
+  </div>
+  <div id="calendario-grade" class="calendario-grade"></div>
+  <button type="button" class="botao botao-bloco" onclick="irParaHoje()">📍 Ir para hoje</button>
+</div>
+
+<div class="cartao">
+  <h3 id="titulo-dia-selecionado">Serviços do dia</h3>
+  <div id="lista-servicos-dia" class="lista-servicos"></div>
+</div>
+
+<!-- Painel de detalhes de um serviço selecionado -->
+<div id="painel-detalhe" class="cartao escondido">
+  <div class="detalhe-cabecalho">
+    <span id="detalhe-status-chip" class="chip-status"></span>
+    <button type="button" class="botao-icone" onclick="fecharDetalhe()">✕</button>
+  </div>
+  <dl id="detalhe-campos" class="lista-detalhes"></dl>
+
+  <div class="mudar-status">
+    <label>Mudar status rápido:</label>
+    <div class="botoes-status" id="botoes-status-rapido"></div>
+  </div>
+
+  <div class="campo campo-largo">
+    <label>📝 Observações</label>
+    <textarea id="detalhe-observacoes" rows="3" placeholder="Nenhuma observação ainda..."></textarea>
+    <button type="button" class="botao botao-primario" onclick="salvarObservacao()">💾 Salvar observação</button>
+  </div>
+
+  <div class="acoes-detalhe">
+    <button type="button" class="botao" onclick="abrirEdicao()">✏ Editar</button>
+    <button type="button" class="botao" onclick="duplicarServico()">📋 Duplicar</button>
+    <button type="button" class="botao botao-perigo" onclick="excluirServico()">🗑 Excluir</button>
+  </div>
+</div>
+
+<!-- Modal de edição -->
+<div id="modal-edicao" class="modal escondido">
+  <div class="modal-conteudo">
+    <h3>Editar serviço</h3>
+    <div class="campo">
+      <label>Data</label>
+      <input type="date" id="e-data">
+    </div>
+    <div class="campo">
+      <label>Horário</label>
+      <select id="e-horario">
+        <option value="">—</option>
+        {% for h in horarios_opcoes %}<option value="{{ h }}">{{ h }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label>Tipo de Serviço</label>
+      <select id="e-tipo_servico">
+        {% for item in listas.tipo_servico %}
+        <option value="{{ item }}">{{ item }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label>Empresa</label>
+      <select id="e-empresa">
+        {% for item in listas.empresa %}
+        <option value="{{ item }}">{{ item }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label>Endereço</label>
+      <input type="text" id="e-endereco">
+    </div>
+    <div class="campo">
+      <label>Técnico</label>
+      <select id="e-tecnico" {{ 'disabled' if session.get('role') != 'admin' else '' }}>
+        <option value="">Sem técnico definido</option>
+        {% for item in listas.tecnico %}
+        <option value="{{ item }}">{{ item }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label>Status</label>
+      <select id="e-status">
+        {% for s in status_opcoes %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label>Valor (R$)</label>
+      <input type="text" id="e-valor" inputmode="decimal">
+    </div>
+    <div class="campo campo-largo escondido" id="campo-e-houve-troca">
+      <label>Houve troca de equipamento nessa manutenção?</label>
+      <div class="botoes-status" id="botoes-e-houve-troca">
+        <button type="button" class="botao-status-opcao" data-valor="sim" onclick="definirHouveTrocaEdicao(true)">Sim</button>
+        <button type="button" class="botao-status-opcao" data-valor="nao" onclick="definirHouveTrocaEdicao(false)">Não</button>
+      </div>
+      <input type="hidden" id="e-houve-troca-equipamento" value="">
+    </div>
+    <div class="campo escondido" id="campo-e-equipamento-retirado">
+      <label>ID do Equipamento Retirado <span class="obrigatorio-se-feito">(obrigatório p/ Feito)</span></label>
+      <div class="linha-combo">
+        <input type="text" id="e-equipamento-retirado" list="lista-equipamentos-empresa-edicao">
+        <button type="button" class="botao-icone" onclick="abrirScanner('e-equipamento-retirado')" title="Ler QR Code / código de barras">📷</button>
+      </div>
+    </div>
+    <div class="campo escondido" id="campo-e-equipamento-instalado">
+      <label>ID do Equipamento Instalado <span class="obrigatorio-se-feito">(obrigatório p/ Feito)</span></label>
+      <div class="linha-combo">
+        <input type="text" id="e-equipamento-instalado" list="lista-equipamentos-empresa-edicao">
+        <button type="button" class="botao-icone" onclick="abrirScanner('e-equipamento-instalado')" title="Ler QR Code / código de barras">📷</button>
+      </div>
+    </div>
+    <datalist id="lista-equipamentos-empresa-edicao"></datalist>
+    <div class="acoes-formulario">
+      <button type="button" class="botao botao-primario botao-bloco" onclick="salvarEdicao()">💾 Salvar alterações</button>
+      <button type="button" class="botao botao-bloco" onclick="fecharModalEdicao()">Cancelar</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/@zxing/browser@0.1.5"></script>
+<script src="{{ url_for('static', filename='js/scanner.js') }}"></script>
+<script src="{{ url_for('static', filename='js/agenda.js') }}"></script>
+{% endblock %}

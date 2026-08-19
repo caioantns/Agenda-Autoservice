@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block titulo %}Início - Agenda Autoservice{% endblock %}
+
+{% block conteudo %}
+<div id="home-root"></div>
+<script>
+  window.APP_ROLE = {{ role|tojson }};
+  window.APP_NOME = {{ nome|tojson }};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="{{ url_for('static', filename='js/home.js') }}"></script>
+{% endblock %}

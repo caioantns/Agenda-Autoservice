@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block titulo %}Resumo - Agenda Autoservice{% endblock %}
+
+{% block conteudo %}
+<h2 class="titulo-pagina">📊 Resumo por técnico</h2>
+
+<div class="cartao filtro-mes">
+  <div class="campo">
+    <label>Mês</label>
+    <select id="filtro-mes" onchange="carregarResumo()">
+      {% for m in meses %}
+      <option value="{{ loop.index }}" {{ 'selected' if loop.index == mes_atual else '' }}>{{ m }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="campo">
+    <label>Ano</label>
+    <select id="filtro-ano" onchange="carregarResumo()">
+      {% for a in range(ano_atual - 2, ano_atual + 2) %}
+      <option value="{{ a }}" {{ 'selected' if a == ano_atual else '' }}>{{ a }}</option>
+      {% endfor %}
+    </select>
+  </div>
+</div>
+
+<div id="cartoes-tecnicos" class="cartoes-tecnicos"></div>
+
+<div class="cartao total-mes">
+  <span>Total do mês</span>
+  <strong id="total-mes-valor">R$ 0,00</strong>
+</div>
+
+<a href="/api/servicos/exportar" class="botao botao-primario botao-bloco" style="text-decoration:none; display:block; text-align:center; margin-top: 14px;">
+  📤 Exportar tudo para Excel (backup)
+</a>
+
+{% if session.get('role') == 'admin' %}
+<div class="cartao" style="margin-top: 14px;">
+  <p style="margin-top:0; font-size:0.82rem; color:#6B7280;">
+    📥 Restaurar um backup: adiciona os serviços de um arquivo .xlsx exportado
+    anteriormente. Não apaga nem substitui o que já está cadastrado.
+  </p>
+  <input type="file" id="arquivo-importar" accept=".xlsx" style="margin-bottom:10px; width:100%;">
+  <button type="button" class="botao botao-bloco" onclick="importarBackup()">Importar backup</button>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/resumo.js') }}"></script>
+{% endblock %}

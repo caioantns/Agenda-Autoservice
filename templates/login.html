@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#2F5496">
+<title>Entrar - Agenda Autoservice</title>
+<link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
+<link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
+<link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/favicon-180.png') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="pagina-login">
+  <div class="cartao-login">
+    <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Agenda Autoservice" class="login-logo">
+    <h1>Agenda Autoservice</h1>
+    <p class="login-sub">Entre com sua conta</p>
+    <form method="post">
+      <input type="text" name="usuario" placeholder="Usuário" autofocus required autocapitalize="off">
+      <input type="password" name="senha" placeholder="Senha" required>
+      {% if erro %}<p class="login-erro">{{ erro }}</p>{% endif %}
+      <button type="submit" class="botao botao-primario botao-bloco">Entrar</button>
+    </form>
+  </div>
+</body>
+</html>

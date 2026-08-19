@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#2F5496">
+<title>{% block titulo %}Agenda Autoservice{% endblock %}</title>
+<link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
+<link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
+<link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='img/favicon-16.png') }}">
+<link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/favicon-180.png') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+</head>
+<body>
+  <header class="topo">
+    <a href="{{ url_for('home') }}" class="topo-titulo-link">
+      <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Agenda Autoservice" class="topo-logo">
+      <span class="topo-titulo">Agenda Autoservice</span>
+    </a>
+    <a href="{{ url_for('logout') }}" class="topo-sair" title="Sair">Sair</a>
+  </header>
+
+  <main class="conteudo">
+    {% block conteudo %}{% endblock %}
+  </main>
+
+  <nav class="nav-inferior">
+    <a href="{{ url_for('home') }}" class="nav-item {{ 'ativo' if aba_ativa == 'home' else '' }}">
+      <span class="nav-icone">🏠</span><span>Início</span>
+    </a>
+    <a href="{{ url_for('cadastro') }}" class="nav-item {{ 'ativo' if aba_ativa == 'cadastro' else '' }}">
+      <span class="nav-icone">📝</span><span>Cadastro</span>
+    </a>
+    <a href="{{ url_for('agenda') }}" class="nav-item {{ 'ativo' if aba_ativa == 'agenda' else '' }}">
+      <span class="nav-icone">📅</span><span>Agenda</span>
+    </a>
+    <a href="{{ url_for('resumo') }}" class="nav-item {{ 'ativo' if aba_ativa == 'resumo' else '' }}">
+      <span class="nav-icone">📊</span><span>Resumo</span>
+    </a>
+    {% if session.get('role') == 'admin' %}
+    <a href="{{ url_for('estoque') }}" class="nav-item {{ 'ativo' if aba_ativa == 'estoque' else '' }}">
+      <span class="nav-icone">📦</span><span>Estoque</span>
+    </a>
+    <a href="{{ url_for('usuarios_pagina') }}" class="nav-item {{ 'ativo' if aba_ativa == 'usuarios' else '' }}">
+      <span class="nav-icone">👤</span><span>Usuários</span>
+    </a>
+    {% endif %}
+  </nav>
+
+  <div id="toast" class="toast"></div>
+
+  <!-- Modal do leitor de QR Code / Código de Barras -->
+  <div id="scanner-modal" class="modal-scanner escondido">
+    <div class="scanner-conteudo">
+      <p id="scanner-status" class="scanner-status">Abrindo câmera...</p>
+      <video id="scanner-video" class="scanner-video" muted playsinline></video>
+      <button type="button" class="botao botao-bloco" onclick="fecharScanner()">Cancelar</button>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/common.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

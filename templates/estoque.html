@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block titulo %}Estoque - Agenda Autoservice{% endblock %}
+
+{% block conteudo %}
+<h2 class="titulo-pagina">📦 Estoque de equipamentos</h2>
+
+<div class="cartao">
+  <div class="campo">
+    <label>Empresa</label>
+    <select id="filtro-empresa-estoque" onchange="carregarEstoque()">
+      <option value="">Selecione uma empresa...</option>
+      {% for e in empresas %}
+      <option value="{{ e }}">{{ e }}</option>
+      {% endfor %}
+    </select>
+  </div>
+</div>
+
+<div id="sem-empresa" class="cartao">
+  <p class="vazio-lista">Selecione uma empresa acima para ver e gerenciar o estoque dela.</p>
+</div>
+
+<div id="area-estoque" class="escondido">
+  <div class="subabas-estoque" id="subabas-estoque">
+    <button type="button" class="subaba-item ativo" data-filtro="Todos" onclick="mudarFiltroEstoque('Todos')">
+      Todos <span class="subaba-contador" id="contador-todos"></span>
+    </button>
+    <button type="button" class="subaba-item" data-filtro="Disponível" onclick="mudarFiltroEstoque('Disponível')">
+      🟢 Disponível <span class="subaba-contador" id="contador-disponivel"></span>
+    </button>
+    <button type="button" class="subaba-item" data-filtro="Utilizado" onclick="mudarFiltroEstoque('Utilizado')">
+      🟡 Utilizado <span class="subaba-contador" id="contador-utilizado"></span>
+    </button>
+    <button type="button" class="subaba-item" data-filtro="Indisponível" onclick="mudarFiltroEstoque('Indisponível')">
+      ⚫ Indisponível <span class="subaba-contador" id="contador-indisponivel"></span>
+    </button>
+  </div>
+
+  <div id="lista-equipamentos" class="lista-equipamentos"></div>
+
+  <button type="button" class="botao botao-primario botao-bloco" onclick="abrirNovoEquipamento()">
+    ➕ Adicionar equipamento
+  </button>
+</div>
+
+<!-- Modal: novo / editar equipamento -->
+<div id="modal-equipamento" class="modal escondido">
+  <div class="modal-conteudo">
+    <h3 id="modal-equipamento-titulo">Novo equipamento</h3>
+    <div class="campo">
+      <label>Modelo</label>
+      <input type="text" id="eq-modelo" placeholder="Ex: XPTO-2000">
+    </div>
+    <div class="campo">
+      <label>ID do equipamento</label>
+      <input type="text" id="eq-codigo" placeholder="Ex: número de série ou patrimônio">
+    </div>
+    <div class="acoes-formulario">
+      <button type="button" class="botao botao-primario botao-bloco" onclick="salvarEquipamento()">💾 Salvar</button>
+      <button type="button" id="btn-excluir-equipamento" class="botao botao-perigo botao-bloco escondido" onclick="excluirEquipamentoAtual()">🗑 Excluir equipamento</button>
+      <button type="button" class="botao botao-bloco" onclick="fecharModalEquipamento()">Cancelar</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/estoque.js') }}"></script>
+{% endblock %}

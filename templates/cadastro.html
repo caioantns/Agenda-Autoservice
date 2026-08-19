@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block titulo %}Cadastro - Agenda Autoservice{% endblock %}
+
+{% block conteudo %}
+<h2 class="titulo-pagina">📝 Novo serviço</h2>
+
+<form id="form-cadastro" class="cartao formulario">
+  <div class="campo">
+    <label>Data</label>
+    <input type="date" id="f-data" required>
+  </div>
+
+  <div class="campo">
+    <label>Horário (opcional)</label>
+    <select id="f-horario">
+      <option value="">—</option>
+      {% for h in horarios_opcoes %}
+      <option value="{{ h }}">{{ h }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="campo campo-lista" data-categoria="tipo_servico">
+    <label>Tipo de Serviço</label>
+    <div class="linha-combo">
+      <select id="f-tipo_servico" required>
+        <option value="">Selecione...</option>
+        {% for item in listas.tipo_servico %}
+        <option value="{{ item }}">{{ item }}</option>
+        {% endfor %}
+      </select>
+      <button type="button" class="botao-icone" onclick="abrirGerenciarLista('tipo_servico', 'Tipo de Serviço')">⚙</button>
+    </div>
+  </div>
+
+  <div class="campo campo-lista" data-categoria="empresa">
+    <label>Empresa</label>
+    <div class="linha-combo">
+      <select id="f-empresa" required>
+        <option value="">Selecione...</option>
+        {% for item in listas.empresa %}
+        <option value="{{ item }}">{{ item }}</option>
+        {% endfor %}
+      </select>
+      <button type="button" class="botao-icone" onclick="abrirGerenciarLista('empresa', 'Empresa')">⚙</button>
+    </div>
+  </div>
+
+  <div class="campo">
+    <label>Endereço</label>
+    <input type="text" id="f-endereco" placeholder="Rua, número, bairro">
+  </div>
+
+  <div class="campo campo-lista" data-categoria="tecnico">
+    <label>Técnico</label>
+    <div class="linha-combo">
+      {% if session.get('role') == 'admin' %}
+      <select id="f-tecnico">
+        <option value="">Sem técnico definido</option>
+        {% for item in listas.tecnico %}
+        <option value="{{ item }}">{{ item }}</option>
+        {% endfor %}
+      </select>
+      <button type="button" class="botao-icone" onclick="abrirGerenciarLista('tecnico', 'Técnico')">⚙</button>
+      {% else %}
+      <input type="text" id="f-tecnico" value="{{ session.get('tecnico_nome', '') }}" disabled>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="campo">
+    <label>Status</label>
+    <select id="f-status">
+      {% for s in status_opcoes %}
+      <option value="{{ s }}">{{ s }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="campo">
+    <label>Valor do serviço (R$)</label>
+    <input type="text" id="f-valor" placeholder="0,00" inputmode="decimal">
+  </div>
+
+  <div class="campo campo-largo escondido" id="campo-houve-troca">
+    <label>Houve troca de equipamento nessa manutenção?</label>
+    <div class="botoes-status" id="botoes-houve-troca">
+      <button type="button" class="botao-status-opcao" data-valor="sim" onclick="definirHouveTroca(true)">Sim</button>
+      <button type="button" class="botao-status-opcao" data-valor="nao" onclick="definirHouveTroca(false)">Não</button>
+    </div>
+    <input type="hidden" id="f-houve-troca-equipamento" value="">
+  </div>
+
+  <div class="campo escondido" id="campo-equipamento-retirado">
+    <label>ID do Equipamento Retirado <span class="obrigatorio-se-feito">(obrigatório para marcar como Feito)</span></label>
+    <div class="linha-combo">
+      <input type="text" id="f-equipamento-retirado" list="lista-equipamentos-empresa" placeholder="Selecione a empresa primeiro">
+      <button type="button" class="botao-icone" onclick="abrirScanner('f-equipamento-retirado')" title="Ler QR Code / código de barras">📷</button>
+    </div>
+  </div>
+
+  <div class="campo escondido" id="campo-equipamento-instalado">
+    <label>ID do Equipamento Instalado <span class="obrigatorio-se-feito">(obrigatório para marcar como Feito)</span></label>
+    <div class="linha-combo">
+      <input type="text" id="f-equipamento-instalado" list="lista-equipamentos-empresa" placeholder="Selecione a empresa primeiro">
+      <button type="button" class="botao-icone" onclick="abrirScanner('f-equipamento-instalado')" title="Ler QR Code / código de barras">📷</button>
+    </div>
+  </div>
+
+  <datalist id="lista-equipamentos-empresa"></datalist>
+
+  <div class="campo campo-largo">
+    <label>Observações (opcional)</label>
+    <textarea id="f-observacoes" rows="3" placeholder="Alguma observação sobre este serviço..."></textarea>
+  </div>
+
+  <div class="acoes-formulario">
+    <button type="submit" class="botao botao-primario botao-bloco">➕ Adicionar serviço</button>
+  </div>
+</form>
+
+<p class="dica-pagina">Para ver, editar, mudar status ou excluir serviços já cadastrados, use a aba Agenda.</p>
+
+<!-- Modal de gerenciar listas (empresa / tipo / técnico) -->
+<div id="modal-lista" class="modal escondido">
+  <div class="modal-conteudo">
+    <h3 id="modal-lista-titulo">Gerenciar</h3>
+    <ul id="modal-lista-itens" class="lista-itens"></ul>
+    <div class="linha-combo">
+      <input type="text" id="modal-lista-novo" placeholder="Adicionar novo...">
+      <button type="button" class="botao botao-primario" onclick="adicionarItemLista()">Adicionar</button>
+    </div>
+    <button type="button" class="botao botao-bloco" onclick="fecharModalLista()">Fechar</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/@zxing/browser@0.1.5"></script>
+<script src="{{ url_for('static', filename='js/scanner.js') }}"></script>
+<script src="{{ url_for('static', filename='js/cadastro.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block titulo %}Usuários - Agenda Autoservice{% endblock %}
+
+{% block conteudo %}
+<h2 class="titulo-pagina">👤 Usuários</h2>
+<p class="dica-pagina" style="margin-bottom: 14px;">
+  Contas Admin veem e alteram tudo. Contas Técnico só veem e alteram os serviços
+  atribuídos ao próprio nome.
+</p>
+
+<div id="lista-usuarios" class="lista-usuarios"></div>
+
+<button type="button" class="botao botao-primario botao-bloco" onclick="abrirNovoUsuario()">
+  ➕ Adicionar usuário
+</button>
+
+<!-- Modal: novo / editar usuário -->
+<div id="modal-usuario" class="modal escondido">
+  <div class="modal-conteudo">
+    <h3 id="modal-usuario-titulo">Novo usuário</h3>
+
+    <div class="campo">
+      <label>Nome (exibição)</label>
+      <input type="text" id="u-nome" placeholder="Ex: Caio, Pai, Mãe...">
+    </div>
+
+    <div class="campo">
+      <label>Usuário (login)</label>
+      <input type="text" id="u-usuario" placeholder="ex: caio" autocapitalize="off">
+    </div>
+
+    <div class="campo">
+      <label id="label-u-senha">Senha</label>
+      <input type="text" id="u-senha" placeholder="Mínimo 4 caracteres">
+    </div>
+
+    <div class="campo">
+      <label>Perfil</label>
+      <select id="u-role" onchange="atualizarCampoTecnico()">
+        <option value="tecnico">Técnico (só vê o próprio serviço)</option>
+        <option value="admin">Admin (vê e altera tudo)</option>
+      </select>
+    </div>
+
+    <div class="campo" id="campo-u-tecnico">
+      <label>Qual Técnico (da lista) essa conta representa?</label>
+      <input type="text" id="u-tecnico-nome" list="lista-tecnicos-usuarios" placeholder="Ex: Caio">
+      <datalist id="lista-tecnicos-usuarios">
+        {% for t in tecnicos %}<option value="{{ t }}">{% endfor %}
+      </datalist>
+    </div>
+
+    <div class="campo">
+      <label class="campo-checkbox">
+        <input type="checkbox" id="u-ativo" checked> Conta ativa (desmarque para bloquear o acesso sem excluir)
+      </label>
+    </div>
+
+    <div class="acoes-formulario">
+      <button type="button" class="botao botao-primario botao-bloco" onclick="salvarUsuario()">💾 Salvar</button>
+      <button type="button" id="btn-excluir-usuario" class="botao botao-perigo botao-bloco escondido" onclick="excluirUsuarioAtual()">🗑 Excluir usuário</button>
+      <button type="button" class="botao botao-bloco" onclick="fecharModalUsuario()">Cancelar</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/usuarios.js') }}"></script>
+{% endblock %}
