@@ -111,8 +111,8 @@ async function carregarServicosDoDia() {
     item.className = "item-servico";
     item.innerHTML = `
       <div class="item-servico-info">
-        <span class="item-servico-titulo">${s.horario || "--:--"} · ${s.tipo_servico}</span>
-        <span class="item-servico-sub">${s.empresa} · ${s.tecnico || "sem técnico"}</span>
+        <span class="item-servico-titulo">${s.periodo || "—"} · ${s.tipo_servico}</span>
+        <span class="item-servico-sub">${s.empresa}${s.endereco ? " · " + s.endereco : ""} · ${s.tecnico || "sem técnico"}</span>
       </div>
       <span class="chip-status ${STATUS_CLASSES[s.status]}">${s.status}</span>
     `;
@@ -136,7 +136,7 @@ async function carregarProximos7Dias() {
 // --- Painel de detalhes ---
 
 const CAMPOS_DETALHE = [
-  ["Data", "data"], ["Horário", "horario"], ["Tipo de Serviço", "tipo_servico"],
+  ["Data", "data"], ["Período", "periodo"], ["Tipo de Serviço", "tipo_servico"],
   ["Empresa", "empresa"], ["Endereço", "endereco"], ["Técnico", "tecnico"], ["Valor", "valor"],
   ["Troca de Equipamento", "houve_troca_equipamento"],
   ["Equipamento Retirado", "equipamento_retirado_codigo"], ["Equipamento Instalado", "equipamento_instalado_codigo"],
@@ -246,7 +246,7 @@ function abrirEdicao() {
   if (!servico) return;
 
   document.getElementById("e-data").value = converterDataParaISO(servico.data);
-  document.getElementById("e-horario").value = servico.horario || "";
+  document.getElementById("e-periodo").value = servico.periodo || "";
   selecionarComFallback("e-tipo_servico", servico.tipo_servico);
   selecionarComFallback("e-empresa", servico.empresa);
   document.getElementById("e-endereco").value = servico.endereco || "";
@@ -327,6 +327,11 @@ async function salvarEdicao(ignorarConflito) {
     mostrarToast("Valor inválido.", "erro");
     return;
   }
+  
+  if (!document.getElementById("e-periodo").value) {
+    mostrarToast("Selecione o período (Manhã, Integral ou Tarde).", "erro");
+    return;
+  }
 
   const status = document.getElementById("e-status").value;
   const tipoServico = document.getElementById("e-tipo_servico").value;
@@ -360,7 +365,7 @@ async function salvarEdicao(ignorarConflito) {
 
   const corpo = {
     data: converterDataParaBR(document.getElementById("e-data").value),
-    horario: document.getElementById("e-horario").value,
+    periodo: document.getElementById("e-periodo").value,
     tipo_servico: tipoServico.trim(),
     empresa: document.getElementById("e-empresa").value.trim(),
     endereco: document.getElementById("e-endereco").value.trim(),

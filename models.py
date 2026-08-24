@@ -7,7 +7,7 @@ db = SQLAlchemy()
 
 STATUS_OPCOES = ["Agendado", "Em andamento", "Feito", "Frustrado", "Cancelado"]
 HORARIOS_OPCOES = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"]
-
+PERIODO_OPCOES = ["Manhã", "Integral", "Tarde"]
 
 class Usuario(db.Model):
     __tablename__ = "usuarios"
@@ -37,7 +37,8 @@ class Servico(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     data = db.Column(db.String(10), nullable=False)  # dd/mm/aaaa
-    horario = db.Column(db.String(5), default="")     # HH:MM
+    horario = db.Column(db.String(5), default="")     # HH:MM (mantido por compatibilidade)
+    periodo = db.Column(db.String(20), default="")     # Manhã / Integral / Tarde
     placa = db.Column(db.String(10), default="")
     tipo_servico = db.Column(db.String(80), nullable=False)
     empresa = db.Column(db.String(120), nullable=False)
@@ -57,6 +58,7 @@ class Servico(db.Model):
             "id": self.id,
             "data": self.data,
             "horario": self.horario or "",
+            "periodo": self.periodo or "",
             "placa": self.placa,
             "tipo_servico": self.tipo_servico,
             "empresa": self.empresa,
@@ -71,6 +73,9 @@ class Servico(db.Model):
         }
 
 
+STATUS_ESTOQUE_OPCOES = ["Disponível", "Utilizado", "Indisponível"]
+
+
 class Equipamento(db.Model):
     __tablename__ = "equipamentos"
 
@@ -78,6 +83,7 @@ class Equipamento(db.Model):
     empresa = db.Column(db.String(120), nullable=False)
     modelo = db.Column(db.String(120), default="")
     codigo = db.Column(db.String(80), nullable=False)  # ID/número de série/patrimônio do equipamento
+    status = db.Column(db.String(20), default="Disponível")
     atualizado_em = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self):
@@ -86,6 +92,7 @@ class Equipamento(db.Model):
             "empresa": self.empresa,
             "modelo": self.modelo or "",
             "codigo": self.codigo,
+            "status": self.status or "Disponível",
         }
 
 

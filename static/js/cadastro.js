@@ -94,6 +94,10 @@ async function enviarFormulario(ignorarConflito) {
     return;
   }
 
+  if (!document.getElementById("f-periodo").value) {
+    mostrarToast("Selecione o período (Manhã, Integral ou Tarde).", "erro");
+    return;
+  }
   const status = document.getElementById("f-status").value;
   const tipoServico = document.getElementById("f-tipo_servico").value;
   const equipamentoRetirado = document.getElementById("f-equipamento-retirado").value.trim();
@@ -126,7 +130,7 @@ async function enviarFormulario(ignorarConflito) {
 
   const corpo = {
     data: converterDataParaBR(document.getElementById("f-data").value),
-    horario: document.getElementById("f-horario").value,
+    periodo: document.getElementById("f-periodo").value,
     tipo_servico: tipoServico.trim(),
     empresa: document.getElementById("f-empresa").value.trim(),
     endereco: document.getElementById("f-endereco").value.trim(),
@@ -166,7 +170,7 @@ function limparFormulario() {
   document.getElementById("f-status").value = "Agendado";
   document.getElementById("f-valor").value = "";
   document.getElementById("f-observacoes").value = "";
-  document.getElementById("f-horario").value = "";
+  document.getElementById("f-periodo").value = "";
   document.getElementById("f-equipamento-retirado").value = "";
   document.getElementById("f-equipamento-instalado").value = "";
   definirHouveTroca(null);

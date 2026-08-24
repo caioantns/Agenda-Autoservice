@@ -10,13 +10,13 @@
     <input type="date" id="f-data" required>
   </div>
 
-  <div class="campo">
-    <label>Horário (opcional)</label>
-    <select id="f-horario">
-      <option value="">—</option>
-      {% for h in horarios_opcoes %}
-      <option value="{{ h }}">{{ h }}</option>
-      {% endfor %}
+ <div class="campo">
+    <label>Período</label>
+    <select id="f-periodo" required>
+      <option value="">Selecione...</option>
+      <option value="Manhã">Manhã</option>
+      <option value="Integral">Integral</option>
+      <option value="Tarde">Tarde</option>
     </select>
   </div>
 

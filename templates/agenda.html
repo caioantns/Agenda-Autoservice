@@ -74,10 +74,12 @@
       <input type="date" id="e-data">
     </div>
     <div class="campo">
-      <label>Horário</label>
-      <select id="e-horario">
-        <option value="">—</option>
-        {% for h in horarios_opcoes %}<option value="{{ h }}">{{ h }}</option>{% endfor %}
+      <label>Período</label>
+      <select id="e-periodo">
+        <option value="">Selecione...</option>
+        <option value="Manhã">Manhã</option>
+        <option value="Integral">Integral</option>
+        <option value="Tarde">Tarde</option>
       </select>
     </div>
     <div class="campo">

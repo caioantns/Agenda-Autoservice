@@ -40,7 +40,8 @@ function mudarFiltroEstoque(filtro) {
 function atualizarContadoresEstoque() {
   const contagem = { "Disponível": 0, "Utilizado": 0, "Indisponível": 0 };
   equipamentosCache.forEach((item) => {
-    if (contagem[item.status_estoque] !== undefined) contagem[item.status_estoque]++;
+    const status = item.status || "Disponível";
+    if (contagem[status] !== undefined) contagem[status]++;
   });
   document.getElementById("contador-todos").textContent = equipamentosCache.length;
   document.getElementById("contador-disponivel").textContent = contagem["Disponível"];
@@ -48,13 +49,15 @@ function atualizarContadoresEstoque() {
   document.getElementById("contador-indisponivel").textContent = contagem["Indisponível"];
 }
 
+const CLASSE_CHIP_POR_STATUS = { "Disponível": "feito", "Utilizado": "em-andamento", "Indisponível": "cancelado" };
+
 function desenharListaEquipamentos() {
   const lista = document.getElementById("lista-equipamentos");
   lista.innerHTML = "";
 
   const itensFiltrados = filtroEstoqueAtual === "Todos"
     ? equipamentosCache
-    : equipamentosCache.filter((item) => item.status_estoque === filtroEstoqueAtual);
+    : equipamentosCache.filter((item) => (item.status || "Disponível") === filtroEstoqueAtual);
 
   if (itensFiltrados.length === 0) {
     const mensagem = equipamentosCache.length === 0
@@ -65,35 +68,66 @@ function desenharListaEquipamentos() {
   }
 
   itensFiltrados.forEach((item) => {
-    const div = document.createElement("div");
-    div.className = "item-equipamento";
-    div.onclick = () => abrirEditarEquipamento(item.id);
-
-    const classeChip = {
-      "Disponível": "feito",
-      "Utilizado": "em-andamento",
-      "Indisponível": "cancelado",
-    }[item.status_estoque] || "agendado";
+    const status = item.status || "Disponível";
 
     let infoOS = "";
     if (item.os_vinculada) {
       const os = item.os_vinculada;
       infoOS = `<span class="item-equipamento-obs">
-        OS: ${os.data}${os.horario ? " " + os.horario : ""} · ${os.tipo_servico}
+        Última OS: ${os.data}${os.periodo ? " · " + os.periodo : ""} · ${os.tipo_servico}
         ${os.tecnico ? " · " + os.tecnico : ""} · ${os.status}
       </span>`;
     }
 
-    div.innerHTML = `
+    const div = document.createElement("div");
+    div.className = "item-equipamento";
+    div.style.flexDirection = "column";
+    div.style.alignItems = "stretch";
+    div.style.gap = "8px";
+
+    const linhaTopo = document.createElement("div");
+    linhaTopo.style.display = "flex";
+    linhaTopo.style.justifyContent = "space-between";
+    linhaTopo.style.alignItems = "center";
+    linhaTopo.style.cursor = "pointer";
+    linhaTopo.onclick = () => abrirEditarEquipamento(item.id);
+    linhaTopo.innerHTML = `
       <div class="item-equipamento-info">
         <span class="item-equipamento-nome">${item.codigo}</span>
         <span class="item-equipamento-obs">${item.modelo ? `Modelo: ${item.modelo}` : "Modelo não informado"}</span>
         ${infoOS}
       </div>
-      <span class="chip-status ${classeChip}">${item.status_estoque}</span>
+      <span class="chip-status ${CLASSE_CHIP_POR_STATUS[status] || "agendado"}">${status}</span>
     `;
+    div.appendChild(linhaTopo);
+
+    const botoesStatus = document.createElement("div");
+    botoesStatus.className = "botoes-status";
+    ["Disponível", "Utilizado", "Indisponível"].forEach((opcao) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "botao-status-opcao" + (opcao === status ? " ativo" : "");
+      btn.textContent = opcao;
+      btn.onclick = () => mudarStatusEquipamento(item.id, opcao);
+      botoesStatus.appendChild(btn);
+    });
+    div.appendChild(botoesStatus);
+
     lista.appendChild(div);
   });
+}
+
+async function mudarStatusEquipamento(id, novoStatus) {
+  const resultado = await apiEnviar(`/api/estoque/${id}/status`, "PATCH", { status: novoStatus });
+  if (!resultado.ok) {
+    mostrarToast(resultado.dados.erro || "Erro ao mudar status.", "erro");
+    return;
+  }
+  mostrarToast(`✅ Status alterado para "${novoStatus}"`);
+  const idx = equipamentosCache.findIndex((e) => e.id === id);
+  if (idx >= 0) equipamentosCache[idx].status = novoStatus;
+  atualizarContadoresEstoque();
+  desenharListaEquipamentos();
 }
 
 function abrirNovoEquipamento() {

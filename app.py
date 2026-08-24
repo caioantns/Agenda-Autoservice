@@ -14,7 +14,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
-from models import db, Servico, ListaValor, Equipamento, Usuario, STATUS_OPCOES, HORARIOS_OPCOES
+from models import db, Servico, ListaValor, Equipamento, Usuario, STATUS_OPCOES, HORARIOS_OPCOES, PERIODO_OPCOES, STATUS_ESTOQUE_OPCOES
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -257,14 +257,27 @@ def normalizar_houve_troca(valor):
 
 def registrar_equipamento_retirado_no_estoque(empresa, codigo):
     """Quando um equipamento é retirado de um cliente, ele volta para o estoque da
-    empresa como indisponível (fica pendente de inspeção). Se ainda não estiver
+    empresa marcado como Indisponível (pendente de inspeção). Se ainda não estiver
     cadastrado no estoque dessa empresa, cria o registro automaticamente."""
     codigo = (codigo or "").strip()
     if not codigo or not empresa:
         return
     existente = Equipamento.query.filter_by(empresa=empresa, codigo=codigo).first()
-    if not existente:
-        db.session.add(Equipamento(empresa=empresa, modelo="", codigo=codigo))
+    if existente:
+        existente.status = "Indisponível"
+    else:
+        db.session.add(Equipamento(empresa=empresa, modelo="", codigo=codigo, status="Indisponível"))
+    db.session.commit()
+
+
+def marcar_equipamento_instalado_utilizado(empresa, codigo):
+    """Quando um equipamento é instalado num cliente, ele passa a Utilizado."""
+    codigo = (codigo or "").strip()
+    if not codigo or not empresa:
+        return
+    existente = Equipamento.query.filter_by(empresa=empresa, codigo=codigo).first()
+    if existente:
+        existente.status = "Utilizado"
         db.session.commit()
 
 
@@ -463,6 +476,8 @@ def criar_servico():
 
     if equipamento_retirado_codigo:
         registrar_equipamento_retirado_no_estoque(empresa, equipamento_retirado_codigo)
+    if equipamento_instalado_codigo:
+        marcar_equipamento_instalado_utilizado(empresa, equipamento_instalado_codigo)
 
     registrar_valor_se_novo("empresa", empresa)
     registrar_valor_se_novo("tipo_servico", tipo_servico)
@@ -495,10 +510,13 @@ def atualizar_servico(servico_id):
     if valor is None:
         return jsonify({"erro": "Valor inválido."}), 400
 
-    horario = (dados.get("horario") or "").strip()
+    periodo = dados.get("periodo") if dados.get("periodo") in PERIODO_OPCOES else ""
+    if not periodo:
+        return jsonify({"erro": "Selecione o período (Manhã, Integral ou Tarde)."}), 400
     tecnico_sessao = tecnico_da_sessao()
     tecnico = tecnico_sessao if tecnico_sessao is not None else (dados.get("tecnico") or "").strip()
     status = dados.get("status") if dados.get("status") in STATUS_OPCOES else servico.status
+
 
     erro_pre_definido = validar_campos_pre_definidos(tipo_servico, empresa, tecnico)
     if erro_pre_definido:
@@ -517,7 +535,7 @@ def atualizar_servico(servico_id):
     if erro_equipamento:
         return jsonify({"erro": erro_equipamento}), 400
 
-    conflito = verificar_conflito(tecnico, data_valida, horario, servico_id_ignorar=servico.id)
+    conflito = verificar_conflito(tecnico, data_valida, periodo, servico_id_ignorar=servico.id)
     if conflito and not dados.get("ignorar_conflito"):
         return jsonify({
             "conflito": True,
@@ -526,7 +544,7 @@ def atualizar_servico(servico_id):
         }), 409
 
     servico.data = data_valida
-    servico.horario = horario
+    servico.periodo = periodo
     servico.placa = placa
     servico.tipo_servico = tipo_servico
     servico.empresa = empresa
@@ -543,6 +561,8 @@ def atualizar_servico(servico_id):
 
     if equipamento_retirado_codigo:
         registrar_equipamento_retirado_no_estoque(empresa, equipamento_retirado_codigo)
+    if equipamento_instalado_codigo:
+        marcar_equipamento_instalado_utilizado(empresa, equipamento_instalado_codigo)
 
     registrar_valor_se_novo("empresa", empresa)
     registrar_valor_se_novo("tipo_servico", tipo_servico)
@@ -647,8 +667,9 @@ def servicos_do_dia(data_str):
     if tecnico_filtro not in ("Todos", ""):
         query = query.filter_by(tecnico=tecnico_filtro)
 
+    ORDEM_PERIODO = {"Manhã": 0, "Integral": 1, "Tarde": 2}
     servicos = query.all()
-    servicos.sort(key=lambda s: s.horario or "99:99")
+    servicos.sort(key=lambda s: ORDEM_PERIODO.get(s.periodo, 9))
     return jsonify([s.to_dict() for s in servicos])
 
 
@@ -690,21 +711,62 @@ def resumo_do_mes(ano, mes):
 @app.route("/api/proximos-7-dias")
 @login_obrigatorio
 def proximos_7_dias():
-    tecnico_filtro = resolver_filtro_tecnico()
-    hoje = date.today()
-    limite = hoje + timedelta(days=6)
-    todos = Servico.query.all()
-    total = 0
-    for s in todos:
-        if tecnico_filtro not in ("Todos", "") and s.tecnico != tecnico_filtro:
-            continue
-        try:
-            d = datetime.strptime(s.data, "%d/%m/%Y").date()
-        except ValueError:
-            continue
-        if hoje <= d <= limite and s.status != "Cancelado":
-            total += 1
-    return jsonify({"total": total})
+    try:
+        tecnico = request.args.get("tecnico", "").strip()
+        hoje = date.today()
+        limite = hoje + timedelta(days=7)
+
+        # Consulta base
+        query = Servico.query
+
+        # Filtra técnico apenas se for um nome real (ignora "Todos" ou vazio)
+        if tecnico and tecnico.lower() != "todos":
+            query = query.filter(Servico.tecnico == tecnico)
+
+        # Busca todos e filtra o intervalo de forma segura
+        todos_servicos = query.all()
+        resultado = []
+
+        for s in todos_servicos:
+            # Garante a leitura da data como string YYYY-MM-DD
+            data_str = str(s.data).split(" ")[0] if s.data else ""
+
+            # Converte com segurança para comparar
+            try:
+                data_obj = date.fromisoformat(data_str)
+                if hoje <= data_obj <= limite:
+                    # Serialização segura
+                    dados = (
+                        s.to_dict()
+                        if hasattr(s, "to_dict")
+                        else {
+                            "id": s.id,
+                            "data": data_str,
+                            "horario": getattr(s, "horario", ""),
+                            "periodo": getattr(s, "periodo", ""),
+                            "tipo_servico": getattr(s, "tipo_servico", ""),
+                            "empresa": getattr(s, "empresa", ""),
+                            "endereco": getattr(s, "endereco", ""),
+                            "tecnico": getattr(s, "tecnico", ""),
+                            "status": getattr(s, "status", "Agendado"),
+                            "valor": getattr(s, "valor", 0.0),
+                            "equipamento_instalado": getattr(
+                                s, "equipamento_instalado", None
+                            ),
+                            "observacoes": getattr(s, "observacoes", ""),
+                        }
+                    )
+                    resultado.append(dados)
+            except Exception:
+                continue
+
+        # Ordena por data e horário
+        resultado.sort(key=lambda x: (x.get("data", ""), x.get("horario", "")))
+        return jsonify(resultado)
+
+    except Exception as e:
+        print(f"Erro em proximos_7_dias: {e}")
+        return jsonify({"erro": str(e)}), 500
 
 
 @app.route("/api/servicos/exportar")
@@ -719,7 +781,7 @@ def exportar_servicos_excel():
     servicos = query.all()
 
     colunas = [
-        "ID", "Data", "Horário", "Placa", "Tipo de Serviço", "Empresa", "Endereço",
+        "ID", "Data", "Período", "Horário", "Placa", "Tipo de Serviço", "Empresa", "Endereço",
         "Técnico", "Status", "Valor", "Equipamento Retirado", "Equipamento Instalado",
         "Observações",
     ]
@@ -734,7 +796,7 @@ def exportar_servicos_excel():
 
     for s in servicos:
         ws.append([
-            s.id, s.data, s.horario or "", s.placa or "", s.tipo_servico, s.empresa,
+            s.id, s.data, s.periodo or "", s.horario or "", s.placa or "", s.tipo_servico, s.empresa,
             s.endereco or "", s.tecnico or "", s.status, s.valor or 0.0,
             s.equipamento_retirado_codigo or "", s.equipamento_instalado_codigo or "",
             s.observacoes or "",
@@ -780,7 +842,7 @@ def importar_servicos_excel():
 
     cabecalho = [str(c or "").strip() for c in linhas[0]]
     esperado = [
-        "ID", "Data", "Horário", "Placa", "Tipo de Serviço", "Empresa", "Endereço",
+        "ID", "Data", "Período", "Horário", "Placa", "Tipo de Serviço", "Empresa", "Endereço",
         "Técnico", "Status", "Valor", "Equipamento Retirado", "Equipamento Instalado",
         "Observações",
     ]
@@ -795,8 +857,8 @@ def importar_servicos_excel():
     for linha in linhas[1:]:
         if not linha or not any(linha):
             continue
-        (_, data_str, horario, placa, tipo_servico, empresa, endereco,
-         tecnico, status, valor, eq_retirado, eq_instalado, observacoes) = (list(linha) + [None] * 13)[:13]
+        (_, data_str, periodo, horario, placa, tipo_servico, empresa, endereco,
+         tecnico, status, valor, eq_retirado, eq_instalado, observacoes) = (list(linha) + [None] * 14)[:14]
 
         data_valida = validar_data(str(data_str or "").strip())
         tipo_servico = str(tipo_servico or "").strip()
@@ -815,6 +877,7 @@ def importar_servicos_excel():
 
         servico = Servico(
             data=data_valida,
+            periodo=str(periodo or "").strip() if str(periodo or "").strip() in PERIODO_OPCOES else "",
             horario=str(horario or "").strip(),
             placa=str(placa or "").strip().upper(),
             tipo_servico=tipo_servico,
@@ -916,39 +979,46 @@ def remover_valor(categoria, valor):
 # API: Estoque de equipamentos por empresa
 # ----------------------------------------------------------------------
 
-def buscar_uso_equipamento(empresa, codigo):
-    """Determina a situação atual de um equipamento no estoque, olhando os
-    serviços não cancelados dessa empresa:
-    - Se o código está como Equipamento Instalado em algum serviço -> "Utilizado"
-      (está em uso no cliente daquela OS).
-    - Senão, se está como Equipamento Retirado -> "Indisponível" (voltou pro
-      estoque físico, mas ainda pendente de inspeção/teste).
-    - Senão -> "Disponível".
-    Retorna (situacao, servico_vinculado_ou_None)."""
-    servico_instalado = (
+def buscar_ultima_os_do_equipamento(empresa, codigo):
+    """Só para exibir informação (não decide mais o status) — retorna o serviço
+    mais recente (não cancelado) que usou esse código, se houver."""
+    return (
         Servico.query.filter(
-            Servico.empresa == empresa, Servico.equipamento_instalado_codigo == codigo,
-            Servico.status != "Cancelado",
+            Servico.empresa == empresa, Servico.status != "Cancelado",
+            db.or_(
+                Servico.equipamento_retirado_codigo == codigo,
+                Servico.equipamento_instalado_codigo == codigo,
+            ),
         ).order_by(Servico.id.desc()).first()
     )
-    if servico_instalado:
-        return "Utilizado", servico_instalado
-
-    servico_retirado = (
-        Servico.query.filter(
-            Servico.empresa == empresa, Servico.equipamento_retirado_codigo == codigo,
-            Servico.status != "Cancelado",
-        ).order_by(Servico.id.desc()).first()
-    )
-    if servico_retirado:
-        return "Indisponível", servico_retirado
-
-    return "Disponível", None
 
 
 @app.route("/api/estoque/<empresa>")
 @login_obrigatorio
 def listar_estoque(empresa):
+    itens = Equipamento.query.filter_by(empresa=empresa).order_by(Equipamento.codigo).all()
+    resultado = []
+    for item in itens:
+        dados = item.to_dict()
+        dados["disponivel"] = item.status == "Disponível"  # mantém compatibilidade com os formulários
+        servico_vinculado = buscar_ultima_os_do_equipamento(empresa, item.codigo)
+        dados["os_vinculada"] = None
+        if servico_vinculado:
+            dados["os_vinculada"] = {
+                "id": servico_vinculado.id,
+                "data": servico_vinculado.data,
+                "periodo": servico_vinculado.periodo,
+                "tipo_servico": servico_vinculado.tipo_servico,
+                "tecnico": servico_vinculado.tecnico,
+                "status": servico_vinculado.status,
+            }
+        resultado.append(dados)
+    return jsonify(resultado)
+
+
+@app.route("/api/estoque/<empresa>")
+@login_obrigatorio
+def listar_estoque_por_empresa(empresa):
     itens = Equipamento.query.filter_by(empresa=empresa).order_by(Equipamento.codigo).all()
     resultado = []
     for item in itens:
@@ -968,6 +1038,19 @@ def listar_estoque(empresa):
             }
         resultado.append(dados)
     return jsonify(resultado)
+
+
+@app.route("/api/estoque/<int:item_id>/status", methods=["PATCH"])
+@admin_obrigatorio
+def mudar_status_equipamento(item_id):
+    item = Equipamento.query.get_or_404(item_id)
+    dados = request.get_json(force=True)
+    novo_status = dados.get("status")
+    if novo_status not in STATUS_ESTOQUE_OPCOES:
+        return jsonify({"erro": "Status inválido."}), 400
+    item.status = novo_status
+    db.session.commit()
+    return jsonify({"ok": True, "item": item.to_dict()})
 
 
 @app.route("/api/estoque", methods=["POST"])
