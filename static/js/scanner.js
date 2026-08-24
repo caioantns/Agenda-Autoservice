@@ -44,15 +44,21 @@ function _carregarBibliotecaScanner() {
 
 let _html5QrCode = null;
 let _campoAlvoScanner = null;
+let _html5QrCode = null;
+let _campoAlvoScanner = null;
 let _scannerAtivo = false;
 
-async function abrirScanner(idCampoDestino) {
+async function abrirScanner(alvoDestino) {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     mostrarToast("Esse navegador não permite acessar a câmera.", "erro");
     return;
   }
 
-  _campoAlvoScanner = idCampoDestino;
+  // Guarda o elemento direto ou busca pelo ID
+  _campoAlvoScanner = (typeof alvoDestino === "string") 
+    ? document.getElementById(alvoDestino) 
+    : alvoDestino;
+
   document.getElementById("scanner-modal").classList.remove("escondido");
   document.getElementById("scanner-status").textContent = "Carregando leitor...";
 
@@ -78,7 +84,7 @@ async function abrirScanner(idCampoDestino) {
         fecharScanner();
       },
       () => {
-        // chamado a cada frame sem leitura encontrada — normal, ignora.
+        // Chamado a cada frame sem leitura encontrada — normal, ignora.
       }
     )
     .then(() => {
@@ -87,19 +93,33 @@ async function abrirScanner(idCampoDestino) {
     })
     .catch((err) => {
       console.error(err);
-      document.getElementById("scanner-status").textContent =
-        "Não consegui abrir a câmera. Verifique a permissão do navegador.";
+      // Fallback: se der erro na câmera traseira específica, tenta abrir qualquer câmera disponível
+      _html5QrCode.start(
+        { facingMode: "user" },
+        config,
+        (textoDecodificado) => {
+          document.getElementById("scanner-status").textContent = "Código lido!";
+          preencherCampoScanner(textoDecodificado);
+          fecharScanner();
+        },
+        () => {}
+      ).then(() => {
+        _scannerAtivo = true;
+        document.getElementById("scanner-status").textContent = "Aponte para o QR Code ou código de barras";
+      }).catch(() => {
+        document.getElementById("scanner-status").textContent =
+          "Não consegui abrir a câmera. Verifique a permissão do navegador.";
+      });
     });
 }
 
 function preencherCampoScanner(texto) {
   if (!_campoAlvoScanner) return;
-  const campo = document.getElementById(_campoAlvoScanner);
-  if (campo) {
-    campo.value = texto.trim();
-    campo.dispatchEvent(new Event("input", { bubbles: true }));
-    campo.dispatchEvent(new Event("change", { bubbles: true }));
-  }
+  
+  _campoAlvoScanner.value = texto.trim();
+  _campoAlvoScanner.dispatchEvent(new Event("input", { bubbles: true }));
+  _campoAlvoScanner.dispatchEvent(new Event("change", { bubbles: true }));
+  
   mostrarToast(`✅ Código lido: ${texto.trim()}`);
 }
 
@@ -111,7 +131,7 @@ function fecharScanner() {
       .stop()
       .then(() => _html5QrCode.clear())
       .catch(() => {
-        // câmera já pode ter parado sozinha — sem problema
+        // Câmera já pode ter parado sozinha
       });
   }
 
