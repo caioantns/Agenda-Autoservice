@@ -137,11 +137,9 @@
       </div>
     </div>
     <div class="campo escondido" id="campo-e-equipamento-instalado">
-      <label>ID do Equipamento Instalado <span class="obrigatorio-se-feito">(obrigatório p/ Feito)</span></label>
-      <div class="linha-combo">
-        <input type="text" id="e-equipamento-instalado" list="lista-equipamentos-empresa-edicao">
-        <button type="button" class="botao-icone" onclick="abrirScanner('e-equipamento-instalado')" title="Ler QR Code / código de barras">📷</button>
-      </div>
+      <label>Equipamento(s) Instalado(s) <span class="obrigatorio-se-feito">(obrigatório p/ Feito)</span></label>
+      <div id="e-equipamentos-instalados"></div>
+      <button type="button" class="botao" onclick="criarLinhaEquipamentoInstalado('e-equipamentos-instalados', 'lista-equipamentos-empresa-edicao')">➕ Adicionar outro equipamento</button>
     </div>
     <datalist id="lista-equipamentos-empresa-edicao"></datalist>
     <div class="acoes-formulario">

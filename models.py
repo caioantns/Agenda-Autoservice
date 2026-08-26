@@ -9,6 +9,27 @@ STATUS_OPCOES = ["Agendado", "Em andamento", "Feito", "Frustrado", "Cancelado"]
 HORARIOS_OPCOES = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"]
 PERIODO_OPCOES = ["Manhã", "Integral", "Tarde"]
 
+
+def codigos_instalados_lista(texto):
+    """Converte o texto guardado no banco (códigos separados por vírgula) numa lista,
+    sem vazios e sem repetições, preservando a ordem em que foram informados."""
+    codigos = []
+    for parte in (texto or "").split(","):
+        parte = parte.strip()
+        if parte and parte not in codigos:
+            codigos.append(parte)
+    return codigos
+
+
+def codigos_instalados_texto(lista):
+    """Converte uma lista de códigos no texto guardado no banco (separados por vírgula)."""
+    codigos = []
+    for item in lista or []:
+        item = (item or "").strip()
+        if item and item not in codigos:
+            codigos.append(item)
+    return ",".join(codigos)
+
 class Usuario(db.Model):
     __tablename__ = "usuarios"
 
@@ -68,7 +89,11 @@ class Servico(db.Model):
             "valor": self.valor or 0.0,
             "observacoes": self.observacoes or "",
             "equipamento_retirado_codigo": self.equipamento_retirado_codigo or "",
+            # Mantido por compatibilidade (telas antigas liam um único código).
             "equipamento_instalado_codigo": self.equipamento_instalado_codigo or "",
+            # Instalação/Manutenção podem ter mais de um equipamento instalado;
+            # os códigos ficam guardados juntos no banco, separados por vírgula.
+            "equipamento_instalado_codigos": codigos_instalados_lista(self.equipamento_instalado_codigo),
             "houve_troca_equipamento": self.houve_troca_equipamento,
         }
 

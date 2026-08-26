@@ -14,7 +14,10 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
-from models import db, Servico, ListaValor, Equipamento, Usuario, STATUS_OPCOES, HORARIOS_OPCOES, PERIODO_OPCOES, STATUS_ESTOQUE_OPCOES
+from models import (
+    db, Servico, ListaValor, Equipamento, Usuario, STATUS_OPCOES, HORARIOS_OPCOES,
+    PERIODO_OPCOES, STATUS_ESTOQUE_OPCOES, codigos_instalados_lista, codigos_instalados_texto,
+)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -198,13 +201,14 @@ def tipo_e_manutencao(tipo_servico):
     return normalizar_texto(tipo_servico) == "manutencao"
 
 
-def validar_equipamento_instalado_existe(empresa, codigo_instalado):
-    existe = Equipamento.query.filter_by(empresa=empresa, codigo=codigo_instalado).first()
-    if not existe:
-        return (
-            f'O equipamento "{codigo_instalado}" não está cadastrado no estoque dessa empresa. '
-            f"Cadastre-o na aba Estoque antes de instalar."
-        )
+def validar_equipamentos_instalados_existem(empresa, codigos_instalados):
+    for codigo_instalado in codigos_instalados:
+        existe = Equipamento.query.filter_by(empresa=empresa, codigo=codigo_instalado).first()
+        if not existe:
+            return (
+                f'O equipamento "{codigo_instalado}" não está cadastrado no estoque dessa empresa. '
+                f"Cadastre-o na aba Estoque antes de instalar."
+            )
     return None
 
 
@@ -214,11 +218,14 @@ def validar_equipamento_obrigatorio(
 ):
     """Ao marcar como Feito, exige:
     - Equipamento Retirado, se o tipo for Retirada.
-    - Equipamento Instalado, se o tipo for Instalação — e, nesse caso, o código
-      precisa já existir cadastrado no estoque da empresa.
+    - Ao menos 1 Equipamento Instalado, se o tipo for Instalação (pode ser mais de
+      um) — e, nesse caso, cada código precisa já existir cadastrado no estoque
+      da empresa.
     - Se o tipo for Manutenção, primeiro pergunta se houve troca de equipamento:
-      se sim, exige os dois códigos (nas mesmas regras acima); se não, não exige
-      nenhum código."""
+      se sim, exige os dois (retirado + ao menos 1 instalado, nas mesmas regras
+      acima); se não, não exige nenhum código.
+    `equipamento_instalado_codigo` chega aqui já como texto com os códigos
+    separados por vírgula."""
     if status != "Feito":
         return None
 
@@ -228,10 +235,10 @@ def validar_equipamento_obrigatorio(
         return None
 
     if tipo_exige_instalado(tipo_servico):
-        codigo_instalado = (equipamento_instalado_codigo or "").strip()
-        if not codigo_instalado:
+        codigos_instalados = codigos_instalados_lista(equipamento_instalado_codigo)
+        if not codigos_instalados:
             return "Para marcar como Feito, informe o ID do equipamento instalado."
-        return validar_equipamento_instalado_existe(empresa, codigo_instalado)
+        return validar_equipamentos_instalados_existem(empresa, codigos_instalados)
 
     if tipo_e_manutencao(tipo_servico):
         if houve_troca_equipamento is None:
@@ -239,12 +246,23 @@ def validar_equipamento_obrigatorio(
         if houve_troca_equipamento is True:
             if not (equipamento_retirado_codigo or "").strip():
                 return "Para marcar como Feito, informe o ID do equipamento retirado."
-            codigo_instalado = (equipamento_instalado_codigo or "").strip()
-            if not codigo_instalado:
+            codigos_instalados = codigos_instalados_lista(equipamento_instalado_codigo)
+            if not codigos_instalados:
                 return "Para marcar como Feito, informe o ID do equipamento instalado."
-            return validar_equipamento_instalado_existe(empresa, codigo_instalado)
+            return validar_equipamentos_instalados_existem(empresa, codigos_instalados)
 
     return None
+
+
+def montar_codigos_instalados(dados):
+    """Lê os códigos de equipamento instalado enviados pelo front. Aceita a lista
+    nova (`equipamento_instalado_codigos`, um item por campo adicionado na tela)
+    e, por compatibilidade, também o campo antigo de um único código."""
+    lista = dados.get("equipamento_instalado_codigos")
+    if lista is None:
+        unico = (dados.get("equipamento_instalado_codigo") or "").strip()
+        lista = [unico] if unico else []
+    return codigos_instalados_texto(lista)
 
 
 def normalizar_houve_troca(valor):
@@ -270,15 +288,17 @@ def registrar_equipamento_retirado_no_estoque(empresa, codigo):
     db.session.commit()
 
 
-def marcar_equipamento_instalado_utilizado(empresa, codigo):
-    """Quando um equipamento é instalado num cliente, ele passa a Utilizado."""
-    codigo = (codigo or "").strip()
-    if not codigo or not empresa:
+def marcar_equipamento_instalado_utilizado(empresa, equipamento_instalado_codigo):
+    """Quando equipamento(s) são instalados num cliente, cada um passa a Utilizado.
+    `equipamento_instalado_codigo` chega aqui como texto com os códigos separados
+    por vírgula (pode ser um só)."""
+    if not empresa:
         return
-    existente = Equipamento.query.filter_by(empresa=empresa, codigo=codigo).first()
-    if existente:
-        existente.status = "Utilizado"
-        db.session.commit()
+    for codigo in codigos_instalados_lista(equipamento_instalado_codigo):
+        existente = Equipamento.query.filter_by(empresa=empresa, codigo=codigo).first()
+        if existente:
+            existente.status = "Utilizado"
+    db.session.commit()
 
 
 def verificar_conflito(tecnico, data, horario, servico_id_ignorar=None):
@@ -442,7 +462,7 @@ def criar_servico():
         return jsonify({"erro": erro_pre_definido}), 400
 
     equipamento_retirado_codigo = (dados.get("equipamento_retirado_codigo") or "").strip()
-    equipamento_instalado_codigo = (dados.get("equipamento_instalado_codigo") or "").strip()
+    equipamento_instalado_codigo = montar_codigos_instalados(dados)
     houve_troca_equipamento = normalizar_houve_troca(dados.get("houve_troca_equipamento"))
     if not tipo_e_manutencao(tipo_servico):
         houve_troca_equipamento = None
@@ -523,7 +543,7 @@ def atualizar_servico(servico_id):
         return jsonify({"erro": erro_pre_definido}), 400
 
     equipamento_retirado_codigo = (dados.get("equipamento_retirado_codigo") or "").strip()
-    equipamento_instalado_codigo = (dados.get("equipamento_instalado_codigo") or "").strip()
+    equipamento_instalado_codigo = montar_codigos_instalados(dados)
     houve_troca_equipamento = normalizar_houve_troca(dados.get("houve_troca_equipamento"))
     if not tipo_e_manutencao(tipo_servico):
         houve_troca_equipamento = None
@@ -595,8 +615,11 @@ def atualizar_status(servico_id):
     servico.status = novo_status
     db.session.commit()
 
-    if novo_status == "Feito" and servico.equipamento_retirado_codigo:
-        registrar_equipamento_retirado_no_estoque(servico.empresa, servico.equipamento_retirado_codigo)
+    if novo_status == "Feito":
+        if servico.equipamento_retirado_codigo:
+            registrar_equipamento_retirado_no_estoque(servico.empresa, servico.equipamento_retirado_codigo)
+        if servico.equipamento_instalado_codigo:
+            marcar_equipamento_instalado_utilizado(servico.empresa, servico.equipamento_instalado_codigo)
 
     return jsonify({"ok": True, "servico": servico.to_dict()})
 
@@ -981,16 +1004,18 @@ def remover_valor(categoria, valor):
 
 def buscar_ultima_os_do_equipamento(empresa, codigo):
     """Só para exibir informação (não decide mais o status) — retorna o serviço
-    mais recente (não cancelado) que usou esse código, se houver."""
-    return (
-        Servico.query.filter(
-            Servico.empresa == empresa, Servico.status != "Cancelado",
-            db.or_(
-                Servico.equipamento_retirado_codigo == codigo,
-                Servico.equipamento_instalado_codigo == codigo,
-            ),
-        ).order_by(Servico.id.desc()).first()
+    mais recente (não cancelado) que usou esse código, seja como retirado ou como
+    um dos instalados (uma OS pode ter mais de um equipamento instalado)."""
+    candidatos = (
+        Servico.query.filter(Servico.empresa == empresa, Servico.status != "Cancelado")
+        .order_by(Servico.id.desc()).all()
     )
+    for servico in candidatos:
+        if servico.equipamento_retirado_codigo == codigo:
+            return servico
+        if codigo in codigos_instalados_lista(servico.equipamento_instalado_codigo):
+            return servico
+    return None
 
 
 @app.route("/api/estoque/<empresa>")
@@ -1008,30 +1033,6 @@ def listar_estoque(empresa):
                 "id": servico_vinculado.id,
                 "data": servico_vinculado.data,
                 "periodo": servico_vinculado.periodo,
-                "tipo_servico": servico_vinculado.tipo_servico,
-                "tecnico": servico_vinculado.tecnico,
-                "status": servico_vinculado.status,
-            }
-        resultado.append(dados)
-    return jsonify(resultado)
-
-
-@app.route("/api/estoque/<empresa>")
-@login_obrigatorio
-def listar_estoque_por_empresa(empresa):
-    itens = Equipamento.query.filter_by(empresa=empresa).order_by(Equipamento.codigo).all()
-    resultado = []
-    for item in itens:
-        dados = item.to_dict()
-        situacao, servico_vinculado = buscar_uso_equipamento(empresa, item.codigo)
-        dados["status_estoque"] = situacao
-        dados["disponivel"] = situacao == "Disponível"  # mantém compatibilidade com os formulários
-        dados["os_vinculada"] = None
-        if servico_vinculado:
-            dados["os_vinculada"] = {
-                "id": servico_vinculado.id,
-                "data": servico_vinculado.data,
-                "horario": servico_vinculado.horario,
                 "tipo_servico": servico_vinculado.tipo_servico,
                 "tecnico": servico_vinculado.tecnico,
                 "status": servico_vinculado.status,
