@@ -78,3 +78,70 @@ function tipoEhInstalacao(tipoServico) {
 function tipoEhManutencao(tipoServico) {
   return normalizarTexto(tipoServico) === "manutencao";
 }
+
+// --- Equipamento(s) instalado(s): permite adicionar mais de um campo na tela ---
+// Cada linha tem seu próprio input + botão de scanner (📷) + botão de remover
+// (exceto a primeira, que sempre fica, pra sempre sobrar pelo menos 1 campo).
+
+function criarLinhaEquipamentoInstalado(containerId, datalistId, valor = "") {
+  const container = document.getElementById(containerId);
+  const linha = document.createElement("div");
+  linha.className = "linha-combo linha-equipamento-instalado";
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "input-equipamento-instalado";
+  input.setAttribute("list", datalistId);
+  input.placeholder = "ID do equipamento";
+  input.value = valor;
+  linha.appendChild(input);
+
+  const botaoScanner = document.createElement("button");
+  botaoScanner.type = "button";
+  botaoScanner.className = "botao-icone";
+  botaoScanner.title = "Ler QR Code / código de barras";
+  botaoScanner.textContent = "📷";
+  botaoScanner.onclick = () => abrirScanner(input);
+  linha.appendChild(botaoScanner);
+
+  if (container.children.length > 0) {
+    const botaoRemover = document.createElement("button");
+    botaoRemover.type = "button";
+    botaoRemover.className = "botao-icone";
+    botaoRemover.title = "Remover este equipamento";
+    botaoRemover.textContent = "✕";
+    botaoRemover.onclick = () => linha.remove();
+    linha.appendChild(botaoRemover);
+  }
+
+  container.appendChild(linha);
+}
+
+// Volta o container para o estado inicial: uma única linha vazia.
+function reiniciarEquipamentosInstalados(containerId, datalistId) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = "";
+  criarLinhaEquipamentoInstalado(containerId, datalistId);
+}
+
+// Preenche o container a partir de uma lista de códigos já salvos (usado na edição).
+function preencherEquipamentosInstalados(containerId, datalistId, codigos) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = "";
+  if (!codigos || codigos.length === 0) {
+    criarLinhaEquipamentoInstalado(containerId, datalistId);
+    return;
+  }
+  codigos.forEach((codigo) => criarLinhaEquipamentoInstalado(containerId, datalistId, codigo));
+}
+
+// Lê os códigos preenchidos em todas as linhas do container (ignora vazios e repetidos).
+function obterEquipamentosInstalados(containerId) {
+  const inputs = document.querySelectorAll(`#${containerId} .input-equipamento-instalado`);
+  const codigos = [];
+  inputs.forEach((input) => {
+    const valor = input.value.trim();
+    if (valor && !codigos.includes(valor)) codigos.push(valor);
+  });
+  return codigos;
+}

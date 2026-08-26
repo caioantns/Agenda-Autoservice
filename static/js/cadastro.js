@@ -27,7 +27,7 @@ function atualizarVisibilidadeEquipamentos() {
     campoInstalado.classList.toggle("escondido", !mostrarCampos);
     if (!mostrarCampos) {
       document.getElementById("f-equipamento-retirado").value = "";
-      document.getElementById("f-equipamento-instalado").value = "";
+      reiniciarEquipamentosInstalados("f-equipamentos-instalados", "lista-equipamentos-empresa");
     }
   } else {
     campoHouveTroca.classList.add("escondido");
@@ -37,7 +37,7 @@ function atualizarVisibilidadeEquipamentos() {
     campoInstalado.classList.toggle("escondido", !tipoEhInstalacao(tipoServico));
 
     if (!tipoEhRetirada(tipoServico)) document.getElementById("f-equipamento-retirado").value = "";
-    if (!tipoEhInstalacao(tipoServico)) document.getElementById("f-equipamento-instalado").value = "";
+    if (!tipoEhInstalacao(tipoServico)) reiniciarEquipamentosInstalados("f-equipamentos-instalados", "lista-equipamentos-empresa");
   }
 }
 
@@ -57,10 +57,11 @@ function definirHouveTroca(valor) {
   campoInstalado.classList.toggle("escondido", !mostrar);
   if (!mostrar) {
     document.getElementById("f-equipamento-retirado").value = "";
-    document.getElementById("f-equipamento-instalado").value = "";
+    reiniciarEquipamentosInstalados("f-equipamentos-instalados", "lista-equipamentos-empresa");
   }
 }
 
+reiniciarEquipamentosInstalados("f-equipamentos-instalados", "lista-equipamentos-empresa");
 atualizarVisibilidadeEquipamentos();
 
 async function carregarEquipamentosDaEmpresa() {
@@ -101,7 +102,7 @@ async function enviarFormulario(ignorarConflito) {
   const status = document.getElementById("f-status").value;
   const tipoServico = document.getElementById("f-tipo_servico").value;
   const equipamentoRetirado = document.getElementById("f-equipamento-retirado").value.trim();
-  const equipamentoInstalado = document.getElementById("f-equipamento-instalado").value.trim();
+  const equipamentosInstalados = obterEquipamentosInstalados("f-equipamentos-instalados");
   const houveTrocaTexto = document.getElementById("f-houve-troca-equipamento").value;
   const houveTrocaEquipamento = houveTrocaTexto === "" ? null : houveTrocaTexto === "true";
 
@@ -109,7 +110,7 @@ async function enviarFormulario(ignorarConflito) {
     mostrarToast("Para marcar como Feito, informe o ID do equipamento retirado.", "erro");
     return;
   }
-  if (status === "Feito" && tipoEhInstalacao(tipoServico) && !equipamentoInstalado) {
+  if (status === "Feito" && tipoEhInstalacao(tipoServico) && equipamentosInstalados.length === 0) {
     mostrarToast("Para marcar como Feito, informe o ID do equipamento instalado.", "erro");
     return;
   }
@@ -122,7 +123,7 @@ async function enviarFormulario(ignorarConflito) {
       mostrarToast("Para marcar como Feito, informe o ID do equipamento retirado.", "erro");
       return;
     }
-    if (houveTrocaEquipamento === true && !equipamentoInstalado) {
+    if (houveTrocaEquipamento === true && equipamentosInstalados.length === 0) {
       mostrarToast("Para marcar como Feito, informe o ID do equipamento instalado.", "erro");
       return;
     }
@@ -139,7 +140,7 @@ async function enviarFormulario(ignorarConflito) {
     valor: valorNumerico,
     observacoes: document.getElementById("f-observacoes").value.trim(),
     equipamento_retirado_codigo: equipamentoRetirado,
-    equipamento_instalado_codigo: equipamentoInstalado,
+    equipamento_instalado_codigos: equipamentosInstalados,
     houve_troca_equipamento: houveTrocaEquipamento,
     ignorar_conflito: ignorarConflito,
   };
@@ -172,7 +173,7 @@ function limparFormulario() {
   document.getElementById("f-observacoes").value = "";
   document.getElementById("f-periodo").value = "";
   document.getElementById("f-equipamento-retirado").value = "";
-  document.getElementById("f-equipamento-instalado").value = "";
+  reiniciarEquipamentosInstalados("f-equipamentos-instalados", "lista-equipamentos-empresa");
   definirHouveTroca(null);
   definirDataHojeNoCampo();
   atualizarVisibilidadeEquipamentos();

@@ -139,7 +139,7 @@ const CAMPOS_DETALHE = [
   ["Data", "data"], ["Período", "periodo"], ["Tipo de Serviço", "tipo_servico"],
   ["Empresa", "empresa"], ["Endereço", "endereco"], ["Técnico", "tecnico"], ["Valor", "valor"],
   ["Troca de Equipamento", "houve_troca_equipamento"],
-  ["Equipamento Retirado", "equipamento_retirado_codigo"], ["Equipamento Instalado", "equipamento_instalado_codigo"],
+  ["Equipamento Retirado", "equipamento_retirado_codigo"], ["Equipamento(s) Instalado(s)", "equipamento_instalado_codigos"],
 ];
 
 function mostrarDetalhe(id) {
@@ -164,6 +164,10 @@ function mostrarDetalhe(id) {
       dd.textContent = formatarValorReais(servico.valor);
     } else if (chave === "houve_troca_equipamento") {
       dd.textContent = servico[chave] === true ? "Sim" : servico[chave] === false ? "Não" : "Não informado ainda";
+    } else if (chave === "equipamento_instalado_codigos") {
+      dd.textContent = servico.equipamento_instalado_codigos && servico.equipamento_instalado_codigos.length
+        ? servico.equipamento_instalado_codigos.join(", ")
+        : "—";
     } else {
       dd.textContent = servico[chave] || "—";
     }
@@ -197,7 +201,10 @@ async function mudarStatusRapido(id, novoStatus) {
   if (!resultado.ok) {
     if (resultado.dados.precisa_equipamento) {
       mostrarToast(resultado.dados.erro, "erro");
-      abrirEdicao();
+      // Abre a edição já com o status que a pessoa tentou colocar (Feito), em vez
+      // do status antigo do serviço — assim ela só precisa preencher o
+      // equipamento e salvar, sem ter que selecionar "Feito" de novo.
+      abrirEdicao(novoStatus);
       return;
     }
     mostrarToast(resultado.dados.erro || "Erro ao mudar status.", "erro");
@@ -241,7 +248,7 @@ function selecionarComFallback(idSelect, valor) {
   select.value = valor;
 }
 
-function abrirEdicao() {
+function abrirEdicao(statusForcado) {
   const servico = servicosDoDiaCache.find((s) => s.id === servicoSelecionadoId);
   if (!servico) return;
 
@@ -251,10 +258,12 @@ function abrirEdicao() {
   selecionarComFallback("e-empresa", servico.empresa);
   document.getElementById("e-endereco").value = servico.endereco || "";
   selecionarComFallback("e-tecnico", servico.tecnico || "");
-  document.getElementById("e-status").value = servico.status;
+  // Se veio de uma tentativa de "Mudar status rápido" que foi barrada por falta
+  // de equipamento, abre a edição já com o status desejado (ex: Feito), em vez
+  // do status antigo do serviço.
+  document.getElementById("e-status").value = statusForcado || servico.status;
   document.getElementById("e-valor").value = String(servico.valor || 0).replace(".", ",");
   document.getElementById("e-equipamento-retirado").value = servico.equipamento_retirado_codigo || "";
-  document.getElementById("e-equipamento-instalado").value = servico.equipamento_instalado_codigo || "";
 
   // houve_troca_equipamento vem como true / false / null da API
   definirHouveTrocaEdicao(
@@ -264,8 +273,22 @@ function abrirEdicao() {
 
   atualizarVisibilidadeEquipamentosEdicao();
   carregarEquipamentosDatalist(servico.empresa, "lista-equipamentos-empresa-edicao");
+  preencherEquipamentosInstalados("e-equipamentos-instalados", "lista-equipamentos-empresa-edicao", servico.equipamento_instalado_codigos);
 
   document.getElementById("modal-edicao").classList.remove("escondido");
+
+  // Foca direto no campo de equipamento que falta, pra agilizar quem só veio
+  // aqui porque tentou marcar como Feito e faltou informar o equipamento.
+  if (statusForcado === "Feito") {
+    setTimeout(() => {
+      if (tipoEhInstalacao(servico.tipo_servico) && (!servico.equipamento_instalado_codigos || servico.equipamento_instalado_codigos.length === 0)) {
+        const primeiroInput = document.querySelector("#e-equipamentos-instalados .input-equipamento-instalado");
+        if (primeiroInput) primeiroInput.focus();
+      } else if (tipoEhRetirada(servico.tipo_servico) && !servico.equipamento_retirado_codigo) {
+        document.getElementById("e-equipamento-retirado").focus();
+      }
+    }, 50);
+  }
 }
 
 function definirHouveTrocaEdicao(valor) {
@@ -336,7 +359,7 @@ async function salvarEdicao(ignorarConflito) {
   const status = document.getElementById("e-status").value;
   const tipoServico = document.getElementById("e-tipo_servico").value;
   const equipamentoRetirado = document.getElementById("e-equipamento-retirado").value.trim();
-  const equipamentoInstalado = document.getElementById("e-equipamento-instalado").value.trim();
+  const equipamentosInstalados = obterEquipamentosInstalados("e-equipamentos-instalados");
   const houveTrocaTexto = document.getElementById("e-houve-troca-equipamento").value;
   const houveTrocaEquipamento = houveTrocaTexto === "" ? null : houveTrocaTexto === "true";
 
@@ -344,7 +367,7 @@ async function salvarEdicao(ignorarConflito) {
     mostrarToast("Para marcar como Feito, informe o ID do equipamento retirado.", "erro");
     return;
   }
-  if (status === "Feito" && tipoEhInstalacao(tipoServico) && !equipamentoInstalado) {
+  if (status === "Feito" && tipoEhInstalacao(tipoServico) && equipamentosInstalados.length === 0) {
     mostrarToast("Para marcar como Feito, informe o ID do equipamento instalado.", "erro");
     return;
   }
@@ -357,7 +380,7 @@ async function salvarEdicao(ignorarConflito) {
       mostrarToast("Para marcar como Feito, informe o ID do equipamento retirado.", "erro");
       return;
     }
-    if (houveTrocaEquipamento === true && !equipamentoInstalado) {
+    if (houveTrocaEquipamento === true && equipamentosInstalados.length === 0) {
       mostrarToast("Para marcar como Feito, informe o ID do equipamento instalado.", "erro");
       return;
     }
@@ -373,7 +396,7 @@ async function salvarEdicao(ignorarConflito) {
     status: status,
     valor: valorNumerico,
     equipamento_retirado_codigo: equipamentoRetirado,
-    equipamento_instalado_codigo: equipamentoInstalado,
+    equipamento_instalado_codigos: equipamentosInstalados,
     houve_troca_equipamento: houveTrocaEquipamento,
     ignorar_conflito: !!ignorarConflito,
   };
