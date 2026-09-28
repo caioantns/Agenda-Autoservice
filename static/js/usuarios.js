@@ -21,12 +21,12 @@ function desenharListaUsuarios() {
     div.onclick = () => abrirEditarUsuario(u.id);
 
     const chipRole = u.role === "admin" ? "feito" : "agendado";
-    const rotuloRole = u.role === "admin" ? "Admin" : `Técnico: ${u.tecnico_nome || "—"}`;
+    const rotuloRole = u.role === "admin" ? "Admin" : `Técnico: ${escaparHtml(u.tecnico_nome || "—")}`;
 
     div.innerHTML = `
       <div class="item-usuario-info">
-        <span class="item-usuario-nome">${u.nome} ${u.ativo ? "" : "(inativo)"}</span>
-        <span class="item-usuario-obs">Login: ${u.usuario}</span>
+        <span class="item-usuario-nome">${escaparHtml(u.nome)} ${u.ativo ? "" : "(inativo)"}</span>
+        <span class="item-usuario-obs">Login: ${escaparHtml(u.usuario)}</span>
       </div>
       <span class="chip-status ${u.ativo ? chipRole : 'cancelado'}">${rotuloRole}</span>
     `;

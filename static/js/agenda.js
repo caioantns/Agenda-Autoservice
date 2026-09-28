@@ -111,10 +111,10 @@ async function carregarServicosDoDia() {
     item.className = "item-servico";
     item.innerHTML = `
       <div class="item-servico-info">
-        <span class="item-servico-titulo">${s.periodo || "—"} · ${s.tipo_servico}</span>
-        <span class="item-servico-sub">${s.empresa}${s.endereco ? " · " + s.endereco : ""} · ${s.tecnico || "sem técnico"}</span>
+        <span class="item-servico-titulo">${escaparHtml(s.periodo || "—")} · ${escaparHtml(s.tipo_servico)}</span>
+        <span class="item-servico-sub">${escaparHtml(s.empresa)}${s.endereco ? " · " + escaparHtml(s.endereco) : ""} · ${escaparHtml(s.tecnico || "sem técnico")}</span>
       </div>
-      <span class="chip-status ${STATUS_CLASSES[s.status]}">${s.status}</span>
+      <span class="chip-status ${STATUS_CLASSES[s.status]}">${escaparHtml(s.status)}</span>
     `;
     item.onclick = () => mostrarDetalhe(s.id);
     lista.appendChild(item);

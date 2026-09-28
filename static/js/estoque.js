@@ -74,8 +74,8 @@ function desenharListaEquipamentos() {
     if (item.os_vinculada) {
       const os = item.os_vinculada;
       infoOS = `<span class="item-equipamento-obs">
-        Última OS: ${os.data}${os.periodo ? " · " + os.periodo : ""} · ${os.tipo_servico}
-        ${os.tecnico ? " · " + os.tecnico : ""} · ${os.status}
+        Última OS: ${escaparHtml(os.data)}${os.periodo ? " · " + escaparHtml(os.periodo) : ""} · ${escaparHtml(os.tipo_servico)}
+        ${os.tecnico ? " · " + escaparHtml(os.tecnico) : ""} · ${escaparHtml(os.status)}
       </span>`;
     }
 
@@ -93,8 +93,8 @@ function desenharListaEquipamentos() {
     linhaTopo.onclick = () => abrirEditarEquipamento(item.id);
     linhaTopo.innerHTML = `
       <div class="item-equipamento-info">
-        <span class="item-equipamento-nome">${item.codigo}</span>
-        <span class="item-equipamento-obs">${item.modelo ? `Modelo: ${item.modelo}` : "Modelo não informado"}</span>
+        <span class="item-equipamento-nome">${escaparHtml(item.codigo)}</span>
+        <span class="item-equipamento-obs">${item.modelo ? `Modelo: ${escaparHtml(item.modelo)}` : "Modelo não informado"}</span>
         ${infoOS}
       </div>
       <span class="chip-status ${CLASSE_CHIP_POR_STATUS[status] || "agendado"}">${status}</span>

@@ -26,12 +26,29 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
     "DATABASE_URL", f"sqlite:///{os.path.join(BASE_DIR, 'servicos.db')}"
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.secret_key = os.environ.get("SECRET_KEY", "troque-esta-chave-em-producao")
+
+# Detecta se está rodando numa hospedagem (Railway/Render/PythonAnywhere).
+# Localmente (python app.py) nada disso existe e o app usa valores de teste.
+EM_PRODUCAO = any(
+    os.environ.get(var) for var in ("RAILWAY_ENVIRONMENT", "RENDER", "PYTHONANYWHERE_DOMAIN", "PRODUCAO")
+)
+
+_secret_key = os.environ.get("SECRET_KEY")
+if not _secret_key:
+    if EM_PRODUCAO:
+        # Sem uma chave própria, qualquer pessoa que conheça a chave padrão
+        # consegue forjar um cookie de sessão com perfil admin.
+        raise RuntimeError(
+            "Defina a variável de ambiente SECRET_KEY (um texto aleatório longo) "
+            "antes de publicar o app."
+        )
+    _secret_key = "chave-apenas-para-teste-local"
+app.secret_key = _secret_key
 
 # Usados apenas para criar a primeira conta admin automaticamente, na primeira
 # vez que o app roda (quando ainda não existe nenhum usuário cadastrado).
 # Depois disso, a gestão de contas é feita pela aba "Usuários" (perfil admin).
-ADMIN_INICIAL_USUARIO = os.environ.get("ADMIN_USUARIO", "admin")
+ADMIN_INICIAL_USUARIO = os.environ.get("ADMIN_USUARIO", "admin").strip().lower()
 ADMIN_INICIAL_SENHA = os.environ.get("ADMIN_SENHA", "servico123")
 
 MESES_PT = [
@@ -45,6 +62,23 @@ db.init_app(app)
 # ----------------------------------------------------------------------
 # Autenticação: contas individuais com perfil admin ou técnico
 # ----------------------------------------------------------------------
+
+@app.before_request
+def sincronizar_sessao_com_banco():
+    """Confere a conta no banco a cada requisição. Assim, se um admin desativar,
+    excluir ou mudar o perfil de alguém, isso vale na hora — e não só quando o
+    cookie de sessão expirar."""
+    user_id = session.get("user_id")
+    if not user_id:
+        return
+    usuario = db.session.get(Usuario, user_id)
+    if not usuario or not usuario.ativo:
+        session.clear()
+        return
+    session["nome"] = usuario.nome
+    session["role"] = usuario.role
+    session["tecnico_nome"] = usuario.tecnico_nome or ""
+
 
 def login_obrigatorio(view):
     @wraps(view)
@@ -98,9 +132,11 @@ def resolver_filtro_tecnico():
 def login():
     erro = None
     if request.method == "POST":
-        usuario_texto = (request.form.get("usuario") or "").strip()
+        usuario_texto = (request.form.get("usuario") or "").strip().lower()
         senha_texto = request.form.get("senha") or ""
-        usuario = Usuario.query.filter_by(usuario=usuario_texto, ativo=True).first()
+        usuario = Usuario.query.filter(
+            db.func.lower(Usuario.usuario) == usuario_texto, Usuario.ativo.is_(True)
+        ).first()
         if usuario and check_password_hash(usuario.senha_hash, senha_texto):
             session["user_id"] = usuario.id
             session["nome"] = usuario.nome
@@ -301,13 +337,14 @@ def marcar_equipamento_instalado_utilizado(empresa, equipamento_instalado_codigo
     db.session.commit()
 
 
-def verificar_conflito(tecnico, data, horario, servico_id_ignorar=None):
-    if not tecnico or not horario:
+def verificar_conflito(tecnico, data, periodo, servico_id_ignorar=None):
+    """Procura outro serviço do mesmo técnico no mesmo dia e período."""
+    if not tecnico or not periodo:
         return None
     query = Servico.query.filter(
         Servico.tecnico == tecnico,
         Servico.data == data,
-        Servico.horario == horario,
+        Servico.periodo == periodo,
         Servico.status != "Cancelado",
     )
     if servico_id_ignorar is not None:
@@ -359,10 +396,10 @@ def home_stats():
     total_empresas = ListaValor.query.filter_by(categoria="empresa").count()
     total_equipamentos_indisponiveis = 0
     if usuario_atual_e_admin():
-        for eq in Equipamento.query.all():
-            situacao, _ = buscar_uso_equipamento(eq.empresa, eq.codigo)
-            if situacao != "Disponível":
-                total_equipamentos_indisponiveis += 1
+        # O status do equipamento agora fica guardado no próprio registro.
+        total_equipamentos_indisponiveis = Equipamento.query.filter(
+            Equipamento.status != "Disponível"
+        ).count()
 
     return jsonify({
         "servicos_hoje": servicos_hoje,
@@ -452,7 +489,10 @@ def criar_servico():
     if valor is None:
         return jsonify({"erro": "Valor inválido."}), 400
 
-    horario = (dados.get("horario") or "").strip()
+    periodo = dados.get("periodo") if dados.get("periodo") in PERIODO_OPCOES else ""
+    if not periodo:
+        return jsonify({"erro": "Selecione o período (Manhã, Integral ou Tarde)."}), 400
+
     tecnico_sessao = tecnico_da_sessao()
     tecnico = tecnico_sessao if tecnico_sessao is not None else (dados.get("tecnico") or "").strip()
     status = dados.get("status") if dados.get("status") in STATUS_OPCOES else STATUS_OPCOES[0]
@@ -474,16 +514,16 @@ def criar_servico():
     if erro_equipamento:
         return jsonify({"erro": erro_equipamento}), 400
 
-    conflito = verificar_conflito(tecnico, data_valida, horario)
+    conflito = verificar_conflito(tecnico, data_valida, periodo)
     if conflito and not dados.get("ignorar_conflito"):
         return jsonify({
             "conflito": True,
-            "mensagem": f"{tecnico} já tem um serviço em {data_valida} às {horario} "
+            "mensagem": f"{tecnico} já tem um serviço em {data_valida} ({periodo}) "
                         f"(Empresa: {conflito.empresa}). Deseja salvar mesmo assim?",
         }), 409
 
     servico = Servico(
-        data=data_valida, horario=horario, placa=placa, tipo_servico=tipo_servico,
+        data=data_valida, periodo=periodo, placa=placa, tipo_servico=tipo_servico,
         empresa=empresa, endereco=(dados.get("endereco") or "").strip(),
         tecnico=tecnico, status=status, valor=valor,
         observacoes=(dados.get("observacoes") or "").strip(),
@@ -559,7 +599,7 @@ def atualizar_servico(servico_id):
     if conflito and not dados.get("ignorar_conflito"):
         return jsonify({
             "conflito": True,
-            "mensagem": f"{tecnico} já tem um serviço em {data_valida} às {horario} "
+            "mensagem": f"{tecnico} já tem um serviço em {data_valida} ({periodo}) "
                         f"(Empresa: {conflito.empresa}). Deseja salvar mesmo assim?",
         }), 409
 
@@ -662,6 +702,7 @@ def duplicar_servico(servico_id):
     novo = Servico(
         data=validar_data(dados.get("data")) or original.data,
         horario=dados.get("horario", original.horario),
+        periodo=dados.get("periodo") if dados.get("periodo") in PERIODO_OPCOES else original.periodo,
         placa=original.placa,
         tipo_servico=original.tipo_servico,
         empresa=original.empresa,
@@ -734,62 +775,29 @@ def resumo_do_mes(ano, mes):
 @app.route("/api/proximos-7-dias")
 @login_obrigatorio
 def proximos_7_dias():
-    try:
-        tecnico = request.args.get("tecnico", "").strip()
-        hoje = date.today()
-        limite = hoje + timedelta(days=7)
+    """Serviços (não cancelados) de hoje até daqui a 7 dias. Técnico só vê os
+    próprios, igual às outras rotas da agenda."""
+    tecnico_filtro = resolver_filtro_tecnico()
+    hoje = date.today()
+    limite = hoje + timedelta(days=7)
 
-        # Consulta base
-        query = Servico.query
+    query = Servico.query.filter(Servico.status != "Cancelado")
+    if tecnico_filtro not in ("Todos", ""):
+        query = query.filter(Servico.tecnico == tecnico_filtro)
 
-        # Filtra técnico apenas se for um nome real (ignora "Todos" ou vazio)
-        if tecnico and tecnico.lower() != "todos":
-            query = query.filter(Servico.tecnico == tecnico)
+    ORDEM_PERIODO = {"Manhã": 0, "Integral": 1, "Tarde": 2}
+    encontrados = []
+    for s in query.all():
+        try:
+            d = datetime.strptime(s.data, "%d/%m/%Y").date()  # formato do banco: dd/mm/aaaa
+        except (ValueError, TypeError):
+            continue
+        if hoje <= d <= limite:
+            encontrados.append((d, ORDEM_PERIODO.get(s.periodo, 9), s))
 
-        # Busca todos e filtra o intervalo de forma segura
-        todos_servicos = query.all()
-        resultado = []
-
-        for s in todos_servicos:
-            # Garante a leitura da data como string YYYY-MM-DD
-            data_str = str(s.data).split(" ")[0] if s.data else ""
-
-            # Converte com segurança para comparar
-            try:
-                data_obj = date.fromisoformat(data_str)
-                if hoje <= data_obj <= limite:
-                    # Serialização segura
-                    dados = (
-                        s.to_dict()
-                        if hasattr(s, "to_dict")
-                        else {
-                            "id": s.id,
-                            "data": data_str,
-                            "horario": getattr(s, "horario", ""),
-                            "periodo": getattr(s, "periodo", ""),
-                            "tipo_servico": getattr(s, "tipo_servico", ""),
-                            "empresa": getattr(s, "empresa", ""),
-                            "endereco": getattr(s, "endereco", ""),
-                            "tecnico": getattr(s, "tecnico", ""),
-                            "status": getattr(s, "status", "Agendado"),
-                            "valor": getattr(s, "valor", 0.0),
-                            "equipamento_instalado": getattr(
-                                s, "equipamento_instalado", None
-                            ),
-                            "observacoes": getattr(s, "observacoes", ""),
-                        }
-                    )
-                    resultado.append(dados)
-            except Exception:
-                continue
-
-        # Ordena por data e horário
-        resultado.sort(key=lambda x: (x.get("data", ""), x.get("horario", "")))
-        return jsonify(resultado)
-
-    except Exception as e:
-        print(f"Erro em proximos_7_dias: {e}")
-        return jsonify({"erro": str(e)}), 500
+    encontrados.sort(key=lambda item: (item[0], item[1]))
+    servicos = [s.to_dict() for _, _, s in encontrados]
+    return jsonify({"total": len(servicos), "servicos": servicos})
 
 
 @app.route("/api/servicos/exportar")
@@ -1200,6 +1208,11 @@ def excluir_usuario(usuario_id):
 with app.app_context():
     db.create_all()
     if Usuario.query.count() == 0:
+        if EM_PRODUCAO and not os.environ.get("ADMIN_SENHA"):
+            raise RuntimeError(
+                "Defina a variável de ambiente ADMIN_SENHA para criar a primeira "
+                "conta admin (a senha padrão só é aceita em teste local)."
+            )
         admin_inicial = Usuario(
             nome="Administrador", usuario=ADMIN_INICIAL_USUARIO,
             senha_hash=generate_password_hash(ADMIN_INICIAL_SENHA), role="admin",

@@ -9,6 +9,18 @@ function mostrarToast(mensagem, tipo = "ok") {
   }, 2600);
 }
 
+// --- Segurança: escapa texto antes de colocar dentro de innerHTML ---
+// Sem isso, um endereço ou observação digitado com código HTML seria executado
+// no navegador de quem abrisse a tela.
+function escaparHtml(texto) {
+  return String(texto ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 // --- Helpers de chamada à API ---
 async function apiGet(url) {
   const resp = await fetch(url);

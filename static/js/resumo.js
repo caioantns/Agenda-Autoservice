@@ -16,7 +16,7 @@ async function carregarResumo() {
     cartao.className = "cartao-tecnico";
     cartao.innerHTML = `
       <div>
-        <div class="cartao-tecnico-nome">👷 ${item.tecnico}</div>
+        <div class="cartao-tecnico-nome">👷 ${escaparHtml(item.tecnico)}</div>
         <div class="cartao-tecnico-sub">${item.feitos} serviço(s) feito(s)</div>
       </div>
       <div class="cartao-tecnico-valor">${formatarValorReais(item.valor)}</div>

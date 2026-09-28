@@ -196,7 +196,7 @@ async function recarregarListaModal() {
   ul.innerHTML = "";
   itens.forEach((valor) => {
     const li = document.createElement("li");
-    li.innerHTML = `<span>${valor}</span>`;
+    li.innerHTML = `<span>${escaparHtml(valor)}</span>`;
     const btn = document.createElement("button");
     btn.textContent = "🗑";
     btn.onclick = () => removerItemLista(valor);
