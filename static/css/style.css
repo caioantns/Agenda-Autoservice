@@ -420,3 +420,15 @@ body {
   .acoes-formulario .botao { flex: 1; }
   .calendario-grade .dia-celula { font-size: 0.95rem; }
 }
+
+/* --- Atalhos de navegação (Google Maps / Waze) no detalhe do serviço --- */
+.navegacao-endereco { display: flex; gap: 8px; margin: 10px 0 14px; }
+.navegacao-endereco.escondido { display: none; }
+.botao-mapa {
+  flex: 1;
+  text-align: center;
+  text-decoration: none;
+  background: var(--cor-primaria-clara);
+  border-color: var(--cor-primaria);
+  color: var(--cor-primaria-escura);
+}

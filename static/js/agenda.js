@@ -175,6 +175,8 @@ function mostrarDetalhe(id) {
     dl.appendChild(dd);
   });
 
+  atualizarNavegacaoEndereco(servico.endereco);
+
   document.getElementById("detalhe-observacoes").value = servico.observacoes || "";
 
   const botoesStatus = document.getElementById("botoes-status-rapido");
@@ -189,6 +191,23 @@ function mostrarDetalhe(id) {
   });
 
   document.getElementById("painel-detalhe").classList.remove("escondido");
+}
+
+// Monta os links do Google Maps e do Waze a partir do endereço do serviço.
+// No celular, esses links abrem direto o app instalado (ou o site, se não tiver).
+function atualizarNavegacaoEndereco(endereco) {
+  const bloco = document.getElementById("navegacao-endereco");
+  const texto = (endereco || "").trim();
+  if (!texto) {
+    bloco.classList.add("escondido");
+    return;
+  }
+  const destino = encodeURIComponent(texto);
+  document.getElementById("link-google-maps").href =
+    `https://www.google.com/maps/dir/?api=1&destination=${destino}&travelmode=driving`;
+  document.getElementById("link-waze").href =
+    `https://waze.com/ul?q=${destino}&navigate=yes`;
+  bloco.classList.remove("escondido");
 }
 
 function fecharDetalhe() {

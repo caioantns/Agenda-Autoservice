@@ -47,6 +47,12 @@
   </div>
   <dl id="detalhe-campos" class="lista-detalhes"></dl>
 
+  <!-- Atalhos de navegação: só aparecem quando o serviço tem endereço -->
+  <div id="navegacao-endereco" class="navegacao-endereco escondido">
+    <a id="link-google-maps" class="botao botao-mapa" target="_blank" rel="noopener">🗺️ Google Maps</a>
+    <a id="link-waze" class="botao botao-mapa" target="_blank" rel="noopener">🚗 Waze</a>
+  </div>
+
   <div class="mudar-status">
     <label>Mudar status rápido:</label>
     <div class="botoes-status" id="botoes-status-rapido"></div>
@@ -100,7 +106,7 @@
     </div>
     <div class="campo">
       <label>Endereço</label>
-      <input type="text" id="e-endereco">
+      <input type="text" id="e-endereco" placeholder="Rua, número, bairro, cidade">
     </div>
     <div class="campo">
       <label>Técnico</label>
