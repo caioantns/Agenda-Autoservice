@@ -114,9 +114,21 @@ async function carregarServicosDoDia() {
         <span class="item-servico-titulo">${escaparHtml(s.periodo || "—")} · ${escaparHtml(s.tipo_servico)}</span>
         <span class="item-servico-sub">${escaparHtml(s.empresa)}${s.endereco ? " · " + escaparHtml(s.endereco) : ""} · ${escaparHtml(s.tecnico || "sem técnico")}</span>
       </div>
-      <span class="chip-status ${STATUS_CLASSES[s.status]}">${escaparHtml(s.status)}</span>
+      <div class="item-servico-lado">
+        <span class="chip-status ${STATUS_CLASSES[s.status]}">${escaparHtml(s.status)}</span>
+      </div>
     `;
     item.onclick = () => mostrarDetalhe(s.id);
+
+    // Atalhos rápidos de navegação direto na lista (só se tiver endereço).
+    if ((s.endereco || "").trim()) {
+      const atalhos = document.createElement("div");
+      atalhos.className = "atalhos-mapa";
+      atalhos.appendChild(criarAtalhoMapa("🗺️", "Abrir no Google Maps", linkGoogleMaps(s.endereco)));
+      atalhos.appendChild(criarAtalhoMapa("🚗", "Abrir no Waze", linkWaze(s.endereco)));
+      item.querySelector(".item-servico-lado").appendChild(atalhos);
+    }
+
     lista.appendChild(item);
   });
 
@@ -193,20 +205,41 @@ function mostrarDetalhe(id) {
   document.getElementById("painel-detalhe").classList.remove("escondido");
 }
 
-// Monta os links do Google Maps e do Waze a partir do endereço do serviço.
+// --- Navegação até o endereço do serviço ---
 // No celular, esses links abrem direto o app instalado (ou o site, se não tiver).
+function linkGoogleMaps(endereco) {
+  const destino = encodeURIComponent((endereco || "").trim());
+  return `https://www.google.com/maps/dir/?api=1&destination=${destino}&travelmode=driving`;
+}
+
+function linkWaze(endereco) {
+  const destino = encodeURIComponent((endereco || "").trim());
+  return `https://waze.com/ul?q=${destino}&navigate=yes`;
+}
+
+// Botãozinho de mapa usado na lista do dia. O stopPropagation evita que o
+// toque no ícone também abra o painel de detalhes do serviço.
+function criarAtalhoMapa(icone, titulo, url) {
+  const link = document.createElement("a");
+  link.className = "atalho-mapa";
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noopener";
+  link.title = titulo;
+  link.setAttribute("aria-label", titulo);
+  link.textContent = icone;
+  link.addEventListener("click", (evento) => evento.stopPropagation());
+  return link;
+}
+
 function atualizarNavegacaoEndereco(endereco) {
   const bloco = document.getElementById("navegacao-endereco");
-  const texto = (endereco || "").trim();
-  if (!texto) {
+  if (!(endereco || "").trim()) {
     bloco.classList.add("escondido");
     return;
   }
-  const destino = encodeURIComponent(texto);
-  document.getElementById("link-google-maps").href =
-    `https://www.google.com/maps/dir/?api=1&destination=${destino}&travelmode=driving`;
-  document.getElementById("link-waze").href =
-    `https://waze.com/ul?q=${destino}&navigate=yes`;
+  document.getElementById("link-google-maps").href = linkGoogleMaps(endereco);
+  document.getElementById("link-waze").href = linkWaze(endereco);
   bloco.classList.remove("escondido");
 }
 
