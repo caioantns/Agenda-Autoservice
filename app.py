@@ -5,6 +5,7 @@ Em produção (Railway/Render): gunicorn app:app
 """
 
 import os
+from zoneinfo import ZoneInfo
 import io
 from datetime import datetime, date, timedelta
 from functools import wraps
@@ -44,6 +45,14 @@ if not _secret_key:
         )
     _secret_key = "chave-apenas-para-teste-local"
 app.secret_key = _secret_key
+
+# O servidor do Railway roda em UTC (horário dos EUA/Europa). Sem isso, depois
+# das 21h no Brasil o app já considera que "hoje" é o dia seguinte.
+FUSO_BRASIL = ZoneInfo("America/Sao_Paulo")
+
+
+def hoje_brasil():
+    return datetime.now(FUSO_BRASIL).date()
 
 # Usados apenas para criar a primeira conta admin automaticamente, na primeira
 # vez que o app roda (quando ainda não existe nenhum usuário cadastrado).
@@ -373,13 +382,13 @@ def home():
 def home_stats():
     tecnico_filtro = tecnico_da_sessao()
 
-    hoje_str = date.today().strftime("%d/%m/%Y")
+    hoje_str = hoje_brasil().strftime("%d/%m/%Y")
     query_hoje = Servico.query.filter_by(data=hoje_str)
     if tecnico_filtro is not None:
         query_hoje = query_hoje.filter_by(tecnico=tecnico_filtro)
     servicos_hoje = query_hoje.count()
 
-    hoje = date.today()
+    hoje = hoje_brasil()
     limite = hoje + timedelta(days=6)
     proximos_7_dias = 0
     todos_servicos = Servico.query.filter(Servico.status != "Cancelado")
@@ -413,7 +422,7 @@ def home_stats():
 @login_obrigatorio
 def cadastro():
     listas = obter_listas()
-    hoje = date.today().strftime("%d/%m/%Y")
+    hoje = hoje_brasil().strftime("%d/%m/%Y")
     return render_template(
         "cadastro.html", listas=listas, status_opcoes=STATUS_OPCOES,
         horarios_opcoes=HORARIOS_OPCOES, hoje=hoje, aba_ativa="cadastro",
@@ -425,7 +434,7 @@ def cadastro():
 @login_obrigatorio
 def agenda():
     listas = obter_listas()
-    hoje = date.today().strftime("%d/%m/%Y")
+    hoje = hoje_brasil().strftime("%d/%m/%Y")
     return render_template(
         "agenda.html", tecnicos=listas["tecnico"], listas=listas, status_opcoes=STATUS_OPCOES,
         horarios_opcoes=HORARIOS_OPCOES, hoje=hoje, aba_ativa="agenda",
@@ -437,7 +446,7 @@ def agenda():
 @login_obrigatorio
 def resumo():
     listas = obter_listas()
-    hoje = date.today()
+    hoje = hoje_brasil()
     return render_template(
         "resumo.html", tecnicos=listas["tecnico"], meses=MESES_PT,
         mes_atual=hoje.month, ano_atual=hoje.year, aba_ativa="resumo",
@@ -778,7 +787,7 @@ def proximos_7_dias():
     """Serviços (não cancelados) de hoje até daqui a 7 dias. Técnico só vê os
     próprios, igual às outras rotas da agenda."""
     tecnico_filtro = resolver_filtro_tecnico()
-    hoje = date.today()
+    hoje = hoje_brasil()
     limite = hoje + timedelta(days=7)
 
     query = Servico.query.filter(Servico.status != "Cancelado")
@@ -843,7 +852,7 @@ def exportar_servicos_excel():
     wb.save(buffer)
     buffer.seek(0)
 
-    nome_arquivo = f"backup_servicos_{datetime.now().strftime('%Y-%m-%d_%Hh%M')}.xlsx"
+    nome_arquivo = f"backup_servicos_{datetime.now(FUSO_BRASIL).strftime('%Y-%m-%d_%Hh%M')}.xlsx"
     return send_file(
         buffer, as_attachment=True, download_name=nome_arquivo,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
