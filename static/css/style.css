@@ -365,7 +365,8 @@ body {
 .botao-editar-equipamento { font-size: 1.05rem; }
 
 /* --- Cabeçalho clicável --- */
-.topo-titulo-link { text-decoration: none; display: flex; align-items: center; gap: 10px; }
+.topo-titulo-link { text-decoration: none; display: flex; align-items: center; gap: 10px; color: white; }
+.topo-titulo-link:visited, .topo-titulo-link:hover { color: white; }
 
 /* --- Início (dashboard) --- */
 .home-wrap { display: flex; flex-direction: column; gap: 18px; }
@@ -424,7 +425,7 @@ body {
 
 /* --- Telas maiores (tablet/desktop acessando a versão web) --- */
 @media (min-width: 720px) {
-  .formulario { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+  .formulario { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px 16px; }
   .acoes-formulario { grid-column: 1 / -1; flex-direction: row; }
   .acoes-formulario .botao { flex: 1; }
   .calendario-grade .dia-celula { font-size: 0.95rem; }
@@ -447,7 +448,22 @@ body {
 .linha-cep { display: flex; gap: 8px; }
 .linha-cep input { flex: 1; min-width: 0; }
 .linha-cep .campo-numero { flex: 0 0 90px; }
-.cep-status { font-size: 0.78rem; min-height: 1em; color: #6B7280; }
+.cep-status { font-size: 0.78rem; color: #6B7280; }
+.cep-status:empty { display: none; }
 .cep-status.cep-ok { color: #15803D; }
 .cep-status.cep-aviso { color: #B45309; }
 .cep-status.cep-erro { color: #B91C1C; }
+
+/* Endereço: no celular, um campo embaixo do outro */
+.bloco-endereco { display: flex; flex-direction: column; gap: 12px; }
+
+/* Impede que selects com textos longos e campos de data empurrem os campos
+   para fora do cartão. */
+.formulario > *, .campo { min-width: 0; }
+.campo input, .campo select, .campo textarea { width: 100%; min-width: 0; box-sizing: border-box; }
+.linha-combo select, .linha-combo input { flex: 1; min-width: 0; }
+.linha-combo .botao-icone, .linha-combo button { flex-shrink: 0; }
+.linha-cep .campo-numero { width: 90px; }
+@media (min-width: 720px) {
+  .bloco-endereco { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 16px; align-items: start; }
+}

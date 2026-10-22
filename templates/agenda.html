@@ -104,18 +104,20 @@
         {% endfor %}
       </select>
     </div>
-    <div class="campo">
-      <label>CEP <span class="rotulo-opcional">(opcional, preenche o endereço)</span></label>
-      <div class="linha-cep">
-        <input type="text" id="e-cep" inputmode="numeric" maxlength="9" placeholder="00000-000" autocomplete="postal-code">
-        <input type="text" id="e-numero" class="campo-numero" placeholder="Nº">
+    <!-- CEP + número + endereço: no computador ficam lado a lado numa linha inteira -->
+    <div class="campo-largo bloco-endereco">
+      <div class="campo">
+        <label>CEP <span class="rotulo-opcional">(opcional)</span></label>
+        <div class="linha-cep">
+          <input type="text" id="e-cep" inputmode="numeric" maxlength="9" placeholder="00000-000" autocomplete="postal-code">
+          <input type="text" id="e-numero" class="campo-numero" placeholder="Nº">
+        </div>
+        <small id="e-cep-status" class="cep-status"></small>
       </div>
-      <small id="e-cep-status" class="cep-status"></small>
-    </div>
-
-    <div class="campo">
-      <label>Endereço</label>
-      <input type="text" id="e-endereco" placeholder="Rua, número, bairro, cidade">
+      <div class="campo">
+        <label>Endereço</label>
+        <input type="text" id="e-endereco" placeholder="Rua, número, bairro, cidade">
+      </div>
     </div>
     <div class="campo">
       <label>Técnico</label>
