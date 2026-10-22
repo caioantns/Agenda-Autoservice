@@ -441,3 +441,13 @@ body {
   border-color: var(--cor-primaria);
   color: var(--cor-primaria-escura);
 }
+
+/* --- Busca por CEP --- */
+.rotulo-opcional { font-weight: 400; color: #9AA3B5; }
+.linha-cep { display: flex; gap: 8px; }
+.linha-cep input { flex: 1; min-width: 0; }
+.linha-cep .campo-numero { flex: 0 0 90px; }
+.cep-status { font-size: 0.78rem; min-height: 1em; color: #6B7280; }
+.cep-status.cep-ok { color: #15803D; }
+.cep-status.cep-aviso { color: #B45309; }
+.cep-status.cep-erro { color: #B91C1C; }

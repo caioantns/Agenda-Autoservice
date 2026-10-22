@@ -47,6 +47,15 @@
   </div>
 
   <div class="campo">
+    <label>CEP <span class="rotulo-opcional">(opcional, preenche o endereço)</span></label>
+    <div class="linha-cep">
+      <input type="text" id="f-cep" inputmode="numeric" maxlength="9" placeholder="00000-000" autocomplete="postal-code">
+      <input type="text" id="f-numero" class="campo-numero" placeholder="Nº">
+    </div>
+    <small id="f-cep-status" class="cep-status"></small>
+  </div>
+
+  <div class="campo">
     <label>Endereço</label>
     <input type="text" id="f-endereco" placeholder="Rua, número, bairro, cidade">
   </div>

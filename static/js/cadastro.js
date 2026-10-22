@@ -1,3 +1,6 @@
+// Busca de endereço pelo CEP no formulário de cadastro (função em common.js).
+const limparCepCadastro = configurarBuscaCep("f");
+
 let categoriaAtualModal = null;
 
 function definirDataHojeNoCampo() {
@@ -167,6 +170,7 @@ function limparFormulario() {
   document.getElementById("f-tipo_servico").value = "";
   document.getElementById("f-empresa").value = "";
   document.getElementById("f-endereco").value = "";
+  if (limparCepCadastro) limparCepCadastro();
   document.getElementById("f-tecnico").value = "";
   document.getElementById("f-status").value = "Agendado";
   document.getElementById("f-valor").value = "";

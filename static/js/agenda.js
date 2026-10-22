@@ -1,3 +1,6 @@
+// Busca de endereço pelo CEP no formulário de edição (função em common.js).
+const limparCepEdicao = configurarBuscaCep("e");
+
 const hoje = new Date();
 let mesAtual = hoje.getMonth() + 1;   // 1-12
 let anoAtual = hoje.getFullYear();
@@ -309,6 +312,7 @@ function abrirEdicao(statusForcado) {
   selecionarComFallback("e-tipo_servico", servico.tipo_servico);
   selecionarComFallback("e-empresa", servico.empresa);
   document.getElementById("e-endereco").value = servico.endereco || "";
+  if (limparCepEdicao) limparCepEdicao();
   selecionarComFallback("e-tecnico", servico.tecnico || "");
   // Se veio de uma tentativa de "Mudar status rápido" que foi barrada por falta
   // de equipamento, abre a edição já com o status desejado (ex: Feito), em vez

@@ -21,6 +21,93 @@ function escaparHtml(texto) {
     .replace(/'/g, "&#39;");
 }
 
+// --- Busca de endereço pelo CEP (ViaCEP, gratuito) ---
+// Liga os campos <prefixo>-cep, <prefixo>-numero, <prefixo>-endereco e
+// <prefixo>-cep-status. Ao completar os 8 dígitos, busca a rua, bairro e cidade
+// e monta o endereço; o número digitado entra logo depois do nome da rua.
+function configurarBuscaCep(prefixo) {
+  const campoCep = document.getElementById(`${prefixo}-cep`);
+  const campoNumero = document.getElementById(`${prefixo}-numero`);
+  const campoEndereco = document.getElementById(`${prefixo}-endereco`);
+  const status = document.getElementById(`${prefixo}-cep-status`);
+  if (!campoCep || !campoNumero || !campoEndereco) return null;
+
+  let dadosCep = null;        // resultado da última busca
+  let enderecoGerado = "";    // o que o app escreveu no campo de endereço
+  let ultimoCepBuscado = "";
+
+  function mostrarStatus(texto, tipo) {
+    status.textContent = texto;
+    status.className = "cep-status" + (tipo ? " cep-" + tipo : "");
+  }
+
+  function montarEndereco() {
+    if (!dadosCep) return;
+    // Se a pessoa já mexeu no endereço na mão, não sobrescreve.
+    if (campoEndereco.value.trim() && campoEndereco.value !== enderecoGerado) return;
+    const numero = campoNumero.value.trim();
+    const local = `${dadosCep.localidade} - ${dadosCep.uf}`;
+    let texto;
+    if (dadosCep.logradouro) {
+      texto = dadosCep.logradouro + (numero ? `, ${numero}` : "");
+      if (dadosCep.bairro) texto += ` - ${dadosCep.bairro}`;
+      texto += `, ${local}`;
+    } else {
+      // CEP geral da cidade: não traz rua.
+      texto = [dadosCep.bairro, local].filter(Boolean).join(", ");
+    }
+    campoEndereco.value = texto;
+    enderecoGerado = texto;
+  }
+
+  async function buscar(cep) {
+    if (cep === ultimoCepBuscado) return;
+    ultimoCepBuscado = cep;
+    mostrarStatus("Buscando CEP…");
+    try {
+      const resposta = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+      if (!resposta.ok) throw new Error("resposta inválida");
+      const dados = await resposta.json();
+      if (dados.erro) {
+        dadosCep = null;
+        mostrarStatus("CEP não encontrado. Confira os números ou digite o endereço.", "erro");
+        return;
+      }
+      dadosCep = dados;
+      enderecoGerado = campoEndereco.value; // permite sobrescrever o que estava lá
+      montarEndereco();
+      if (dados.logradouro) {
+        mostrarStatus("✓ Endereço encontrado. Agora preencha o número.", "ok");
+        campoNumero.focus();
+      } else {
+        mostrarStatus("CEP geral da cidade: digite a rua e o número no endereço.", "aviso");
+        campoEndereco.focus();
+      }
+    } catch (e) {
+      ultimoCepBuscado = "";
+      mostrarStatus("Não foi possível buscar o CEP agora (sem internet?). Digite o endereço.", "erro");
+    }
+  }
+
+  campoCep.addEventListener("input", () => {
+    const digitos = campoCep.value.replace(/\D/g, "").slice(0, 8);
+    campoCep.value = digitos.length > 5 ? `${digitos.slice(0, 5)}-${digitos.slice(5)}` : digitos;
+    if (digitos.length === 8) buscar(digitos);
+    else { ultimoCepBuscado = ""; mostrarStatus(""); }
+  });
+  campoNumero.addEventListener("input", montarEndereco);
+
+  // Para limpar o formulário (novo cadastro ou abrir outro serviço).
+  return function limpar() {
+    campoCep.value = "";
+    campoNumero.value = "";
+    dadosCep = null;
+    enderecoGerado = "";
+    ultimoCepBuscado = "";
+    mostrarStatus("");
+  };
+}
+
 // --- Helpers de chamada à API ---
 async function apiGet(url) {
   const resp = await fetch(url);
