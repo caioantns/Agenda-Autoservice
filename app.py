@@ -448,7 +448,7 @@ def resumo():
     listas = obter_listas()
     hoje = hoje_brasil()
     return render_template(
-        "resumo.html", tecnicos=listas["tecnico"], meses=MESES_PT,
+        "resumo.html", tecnicos=listas["tecnico"], empresas=listas["empresa"], meses=MESES_PT,
         mes_atual=hoje.month, ano_atual=hoje.year, aba_ativa="resumo",
         role=session.get("role"), tecnico_nome=session.get("tecnico_nome", ""),
     )
@@ -809,30 +809,70 @@ def proximos_7_dias():
     return jsonify({"total": len(servicos), "servicos": servicos})
 
 
+def servicos_feitos_do_mes(ano, mes, empresa=""):
+    """Serviços com status Feito no mês/ano informado, opcionalmente de uma
+    empresa só. Técnico logado só enxerga os próprios. Ordenados por data."""
+    query = Servico.query.filter_by(status="Feito")
+    tecnico_sessao = tecnico_da_sessao()
+    if tecnico_sessao is not None:
+        query = query.filter_by(tecnico=tecnico_sessao)
+    if empresa:
+        query = query.filter_by(empresa=empresa)
+
+    ORDEM_PERIODO = {"Manhã": 0, "Integral": 1, "Tarde": 2}
+    encontrados = []
+    for s in query.all():
+        try:
+            d = datetime.strptime(s.data, "%d/%m/%Y").date()  # banco guarda dd/mm/aaaa
+        except (ValueError, TypeError):
+            continue
+        if d.year == ano and d.month == mes:
+            encontrados.append((d, ORDEM_PERIODO.get(s.periodo, 9), s.id, s))
+    encontrados.sort(key=lambda item: item[:3])
+    return [item[3] for item in encontrados]
+
+
+COLUNAS_EXPORTACAO = [
+    "ID", "Data", "Período", "Horário", "Placa", "Tipo de Serviço", "Empresa", "Endereço",
+    "Técnico", "Status", "Valor", "Equipamento Retirado", "Equipamento Instalado",
+    "Observações",
+]
+
+
+def _estilizar_cabecalho(ws):
+    for celula in ws[1]:
+        celula.font = Font(bold=True, color="FFFFFF")
+        celula.fill = PatternFill("solid", fgColor="2F5496")
+    ws.freeze_panes = "A2"
+
+
 @app.route("/api/servicos/exportar")
 @login_obrigatorio
 def exportar_servicos_excel():
-    """Baixa todos os serviços visíveis para o usuário logado num arquivo
-    .xlsx — serve como backup manual e para uso fora do sistema."""
-    tecnico_filtro = tecnico_da_sessao()
-    query = Servico.query.order_by(Servico.id)
-    if tecnico_filtro is not None:
-        query = query.filter_by(tecnico=tecnico_filtro)
-    servicos = query.all()
+    """Sem parâmetros: backup completo (todos os serviços visíveis para o
+    usuário), no formato aceito pelo importador.
+    Com ?ano=&mes= (e opcionalmente &empresa=): só os serviços Feitos daquele
+    mês — o mesmo recorte mostrado na tela de Resumo — com uma segunda aba
+    contendo o total por técnico."""
+    ano = request.args.get("ano", type=int)
+    mes = request.args.get("mes", type=int)
+    empresa = (request.args.get("empresa") or "").strip()
+    relatorio_mensal = bool(ano and mes and 1 <= mes <= 12)
 
-    colunas = [
-        "ID", "Data", "Período", "Horário", "Placa", "Tipo de Serviço", "Empresa", "Endereço",
-        "Técnico", "Status", "Valor", "Equipamento Retirado", "Equipamento Instalado",
-        "Observações",
-    ]
+    if relatorio_mensal:
+        servicos = servicos_feitos_do_mes(ano, mes, empresa)
+    else:
+        tecnico_filtro = tecnico_da_sessao()
+        query = Servico.query.order_by(Servico.id)
+        if tecnico_filtro is not None:
+            query = query.filter_by(tecnico=tecnico_filtro)
+        servicos = query.all()
 
     wb = Workbook()
     ws = wb.active
     ws.title = "Serviços"
-    ws.append(colunas)
-    for celula in ws[1]:
-        celula.font = Font(bold=True, color="FFFFFF")
-        celula.fill = PatternFill("solid", fgColor="2F5496")
+    ws.append(COLUNAS_EXPORTACAO)
+    _estilizar_cabecalho(ws)
 
     for s in servicos:
         ws.append([
@@ -841,18 +881,49 @@ def exportar_servicos_excel():
             s.equipamento_retirado_codigo or "", s.equipamento_instalado_codigo or "",
             s.observacoes or "",
         ])
+    for linha in ws.iter_rows(min_row=2, min_col=11, max_col=11):
+        linha[0].number_format = 'R$ #,##0.00'
 
-    for i, coluna in enumerate(colunas, start=1):
+    for i, coluna in enumerate(COLUNAS_EXPORTACAO, start=1):
         largura = max(len(coluna), 12) + 2
         ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = largura
 
-    ws.freeze_panes = "A2"
+    if relatorio_mensal:
+        # Segunda aba com o resumo. Fica separada para a aba "Serviços"
+        # continuar no formato que o importador aceita.
+        resumo_ws = wb.create_sheet("Resumo")
+        resumo_ws.append([f"Resumo de {MESES_PT[mes - 1]}/{ano}" + (f" — {empresa}" if empresa else " — todas as empresas")])
+        resumo_ws["A1"].font = Font(bold=True, size=13)
+        resumo_ws.append([])
+        resumo_ws.append(["Técnico", "Serviços feitos", "Valor"])
+        for celula in resumo_ws[3]:
+            celula.font = Font(bold=True, color="FFFFFF")
+            celula.fill = PatternFill("solid", fgColor="2F5496")
+
+        por_tecnico = {}
+        for s in servicos:
+            item = por_tecnico.setdefault(s.tecnico or "(sem técnico)", [0, 0.0])
+            item[0] += 1
+            item[1] += s.valor or 0.0
+        for tecnico, (feitos, valor) in sorted(por_tecnico.items()):
+            resumo_ws.append([tecnico, feitos, valor])
+        resumo_ws.append(["Total", len(servicos), sum(s.valor or 0.0 for s in servicos)])
+        for celula in resumo_ws[resumo_ws.max_row]:
+            celula.font = Font(bold=True)
+        for linha in resumo_ws.iter_rows(min_row=4, min_col=3, max_col=3):
+            linha[0].number_format = 'R$ #,##0.00'
+        resumo_ws.column_dimensions["A"].width = 28
+        resumo_ws.column_dimensions["B"].width = 16
+        resumo_ws.column_dimensions["C"].width = 16
+
+        sufixo_empresa = "".join(c if c.isalnum() else "_" for c in empresa).strip("_")
+        nome_arquivo = f"resumo_{ano}-{mes:02d}" + (f"_{sufixo_empresa}" if sufixo_empresa else "") + ".xlsx"
+    else:
+        nome_arquivo = f"backup_servicos_{datetime.now(FUSO_BRASIL).strftime('%Y-%m-%d_%Hh%M')}.xlsx"
 
     buffer = io.BytesIO()
     wb.save(buffer)
     buffer.seek(0)
-
-    nome_arquivo = f"backup_servicos_{datetime.now(FUSO_BRASIL).strftime('%Y-%m-%d_%Hh%M')}.xlsx"
     return send_file(
         buffer, as_attachment=True, download_name=nome_arquivo,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -952,18 +1023,10 @@ def resumo_mensal(ano, mes):
     else:
         tecnicos = [t for (t,) in db.session.query(ListaValor.valor).filter_by(categoria="tecnico").all()]
 
-    todos = Servico.query.filter_by(status="Feito").all()
-    if tecnico_sessao is not None:
-        todos = [s for s in todos if s.tecnico == tecnico_sessao]
+    empresa = (request.args.get("empresa") or "").strip()
 
     contagem = {t: {"feitos": 0, "valor": 0.0} for t in tecnicos}
-    for s in todos:
-        try:
-            d = datetime.strptime(s.data, "%d/%m/%Y").date()
-        except ValueError:
-            continue
-        if d.year != ano or d.month != mes:
-            continue
+    for s in servicos_feitos_do_mes(ano, mes, empresa):
         tecnico = s.tecnico or "(sem técnico)"
         item = contagem.setdefault(tecnico, {"feitos": 0, "valor": 0.0})
         item["feitos"] += 1

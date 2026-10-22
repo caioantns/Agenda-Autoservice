@@ -2,7 +2,14 @@ async function carregarResumo() {
   const mes = document.getElementById("filtro-mes").value;
   const ano = document.getElementById("filtro-ano").value;
 
-  const dados = await apiGet(`/api/resumo/${ano}/${mes}`);
+  const empresa = document.getElementById("filtro-empresa").value;
+  const filtroEmpresa = empresa ? `&empresa=${encodeURIComponent(empresa)}` : "";
+
+  // O botão de exportar acompanha os filtros da tela.
+  document.getElementById("link-exportar-mes").href =
+    `/api/servicos/exportar?ano=${ano}&mes=${mes}${filtroEmpresa}`;
+
+  const dados = await apiGet(`/api/resumo/${ano}/${mes}${empresa ? `?empresa=${encodeURIComponent(empresa)}` : ""}`);
 
   const container = document.getElementById("cartoes-tecnicos");
   container.innerHTML = "";
@@ -25,6 +32,7 @@ async function carregarResumo() {
   });
 
   document.getElementById("total-mes-valor").textContent = formatarValorReais(dados.total_valor);
+  document.getElementById("rotulo-total").textContent = empresa ? `Total do mês · ${empresa}` : "Total do mês";
 }
 
 async function importarBackup() {

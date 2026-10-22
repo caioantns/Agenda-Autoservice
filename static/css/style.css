@@ -306,8 +306,9 @@ body {
 .scanner-conteudo .botao { width: 100%; max-width: 280px; }
 
 /* --- Resumo --- */
-.filtro-mes { display: flex; gap: 12px; }
+.filtro-mes { display: flex; flex-wrap: wrap; gap: 12px; }
 .filtro-mes .campo { flex: 1; }
+.filtro-mes .campo-empresa { flex: 1 1 100%; }
 .cartoes-tecnicos { display: flex; flex-direction: column; gap: 10px; }
 .cartao-tecnico {
   background: white; border: 1px solid var(--cor-borda); border-radius: 12px; padding: 16px;

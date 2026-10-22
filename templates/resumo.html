@@ -21,17 +21,30 @@
       {% endfor %}
     </select>
   </div>
+  <div class="campo campo-empresa">
+    <label>Empresa</label>
+    <select id="filtro-empresa" onchange="carregarResumo()">
+      <option value="">Todas as empresas</option>
+      {% for e in empresas %}
+      <option value="{{ e }}">{{ e }}</option>
+      {% endfor %}
+    </select>
+  </div>
 </div>
 
 <div id="cartoes-tecnicos" class="cartoes-tecnicos"></div>
 
 <div class="cartao total-mes">
-  <span>Total do mês</span>
+  <span id="rotulo-total">Total do mês</span>
   <strong id="total-mes-valor">R$ 0,00</strong>
 </div>
 
-<a href="/api/servicos/exportar" class="botao botao-primario botao-bloco" style="text-decoration:none; display:block; text-align:center; margin-top: 14px;">
-  📤 Exportar tudo para Excel (backup)
+<!-- O link é atualizado pelo resumo.js com o mês, ano e empresa escolhidos -->
+<a id="link-exportar-mes" href="/api/servicos/exportar" class="botao botao-primario botao-bloco" style="text-decoration:none; display:block; text-align:center; margin-top: 14px;">
+  📤 Exportar resumo do mês para Excel
+</a>
+<a href="/api/servicos/exportar" class="botao botao-bloco" style="text-decoration:none; display:block; text-align:center; margin-top: 8px;">
+  💾 Backup completo (todos os serviços)
 </a>
 
 {% if session.get('role') == 'admin' %}
