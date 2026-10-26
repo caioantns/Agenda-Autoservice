@@ -38,6 +38,11 @@
     <a href="{{ url_for('resumo') }}" class="nav-item {{ 'ativo' if aba_ativa == 'resumo' else '' }}">
       <span class="nav-icone">📊</span><span>Resumo</span>
     </a>
+    {% if session.get('role') != 'admin' %}
+    <a href="{{ url_for('meu_estoque_pagina') }}" class="nav-item {{ 'ativo' if aba_ativa == 'meu_estoque' else '' }}">
+      <span class="nav-icone">📦</span><span>Meu estoque</span>
+    </a>
+    {% endif %}
     {% if session.get('role') == 'admin' %}
     <a href="{{ url_for('estoque') }}" class="nav-item {{ 'ativo' if aba_ativa == 'estoque' else '' }}">
       <span class="nav-icone">📦</span><span>Estoque</span>

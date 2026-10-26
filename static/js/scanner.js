@@ -41,6 +41,8 @@ function _carregarBibliotecaScanner() {
 let _html5QrCode = null;
 let _campoAlvoScanner = null;
 let _scannerAtivo = false;
+let _aoLerScanner = null;   // função opcional chamada depois de ler um código
+let _leituraFeita = false;  // a câmera às vezes dispara a mesma leitura 2x
 
 function abrirScannerInput(btn) {
   const input = btn.parentElement ? btn.parentElement.querySelector("input") : null;
@@ -51,7 +53,9 @@ function abrirScannerInput(btn) {
   }
 }
 
-async function abrirScanner(alvoDestino) {
+async function abrirScanner(alvoDestino, aoLer) {
+  _aoLerScanner = typeof aoLer === "function" ? aoLer : null;
+  _leituraFeita = false;
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     if (typeof mostrarToast === "function") {
       mostrarToast("Esse navegador não permite acessar a câmera.", "erro");
@@ -121,13 +125,17 @@ async function abrirScanner(alvoDestino) {
 }
 
 function preencherCampoScanner(texto) {
-  if (!_campoAlvoScanner) return;
+  if (!_campoAlvoScanner || _leituraFeita) return;
+  _leituraFeita = true;
+  const aoLer = _aoLerScanner;
 
   _campoAlvoScanner.value = texto.trim();
   _campoAlvoScanner.dispatchEvent(new Event("input", { bubbles: true }));
   _campoAlvoScanner.dispatchEvent(new Event("change", { bubbles: true }));
 
-  if (typeof mostrarToast === "function") {
+  if (aoLer) {
+    aoLer(texto.trim());
+  } else if (typeof mostrarToast === "function") {
     mostrarToast(`✅ Código lido: ${texto.trim()}`);
   }
 }
@@ -146,4 +154,5 @@ function fecharScanner() {
   _html5QrCode = null;
   _scannerAtivo = false;
   _campoAlvoScanner = null;
+  _aoLerScanner = null;
 }

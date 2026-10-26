@@ -400,7 +400,7 @@ function fecharModalEdicao() {
   document.getElementById("modal-edicao").classList.add("escondido");
 }
 
-async function salvarEdicao(ignorarConflito) {
+async function salvarEdicao() {
   const valorNumerico = parseValorInput(document.getElementById("e-valor").value);
   if (valorNumerico === null) {
     mostrarToast("Valor inválido.", "erro");
@@ -454,17 +454,9 @@ async function salvarEdicao(ignorarConflito) {
     equipamento_retirado_codigo: equipamentoRetirado,
     equipamento_instalado_codigos: equipamentosInstalados,
     houve_troca_equipamento: houveTrocaEquipamento,
-    ignorar_conflito: !!ignorarConflito,
   };
 
   const resultado = await apiEnviar(`/api/servicos/${servicoSelecionadoId}`, "PUT", corpo);
-
-  if (resultado.status === 409 && resultado.dados.conflito) {
-    if (confirm(resultado.dados.mensagem)) {
-      await salvarEdicao(true);
-    }
-    return;
-  }
 
   if (!resultado.ok) {
     mostrarToast(resultado.dados.erro || "Erro ao salvar.", "erro");

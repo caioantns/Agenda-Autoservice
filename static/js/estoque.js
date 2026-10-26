@@ -38,18 +38,21 @@ function mudarFiltroEstoque(filtro) {
 }
 
 function atualizarContadoresEstoque() {
-  const contagem = { "Disponível": 0, "Utilizado": 0, "Indisponível": 0 };
+  const contagem = { "Disponível": 0, "Com técnico": 0, "Utilizado": 0, "Indisponível": 0 };
   equipamentosCache.forEach((item) => {
     const status = item.status || "Disponível";
     if (contagem[status] !== undefined) contagem[status]++;
   });
   document.getElementById("contador-todos").textContent = equipamentosCache.length;
   document.getElementById("contador-disponivel").textContent = contagem["Disponível"];
+  document.getElementById("contador-com-tecnico").textContent = contagem["Com técnico"];
   document.getElementById("contador-utilizado").textContent = contagem["Utilizado"];
   document.getElementById("contador-indisponivel").textContent = contagem["Indisponível"];
 }
 
-const CLASSE_CHIP_POR_STATUS = { "Disponível": "feito", "Utilizado": "em-andamento", "Indisponível": "cancelado" };
+const CLASSE_CHIP_POR_STATUS = {
+  "Disponível": "feito", "Com técnico": "agendado", "Utilizado": "em-andamento", "Indisponível": "cancelado",
+};
 
 function desenharListaEquipamentos() {
   const lista = document.getElementById("lista-equipamentos");
@@ -95,6 +98,7 @@ function desenharListaEquipamentos() {
       <div class="item-equipamento-info">
         <span class="item-equipamento-nome">${escaparHtml(item.codigo)}</span>
         <span class="item-equipamento-obs">${item.modelo ? `Modelo: ${escaparHtml(item.modelo)}` : "Modelo não informado"}</span>
+        ${item.tecnico ? `<span class="item-equipamento-tecnico">👷 Com ${escaparHtml(item.tecnico)}${item.retirado_em ? ` desde ${escaparHtml(item.retirado_em)}` : ""}</span>` : ""}
         ${infoOS}
       </div>
       <span class="chip-status ${CLASSE_CHIP_POR_STATUS[status] || "agendado"}">${status}</span>
@@ -125,7 +129,8 @@ async function mudarStatusEquipamento(id, novoStatus) {
   }
   mostrarToast(`✅ Status alterado para "${novoStatus}"`);
   const idx = equipamentosCache.findIndex((e) => e.id === id);
-  if (idx >= 0) equipamentosCache[idx].status = novoStatus;
+  // O servidor limpa o técnico quando o equipamento volta ao estoque.
+  if (idx >= 0) Object.assign(equipamentosCache[idx], resultado.dados.item);
   atualizarContadoresEstoque();
   desenharListaEquipamentos();
 }

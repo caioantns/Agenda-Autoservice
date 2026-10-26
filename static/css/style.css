@@ -468,3 +468,15 @@ body {
 @media (min-width: 720px) {
   .bloco-endereco { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 16px; align-items: start; }
 }
+
+/* --- Estoque do técnico --- */
+.link-estoque-tecnicos { display: block; text-align: center; text-decoration: none; margin-bottom: 14px; }
+.dica-campo { font-size: 0.76rem; color: #6B7280; }
+.formulario-retirada { display: flex; flex-direction: column; gap: 12px; }
+.escolha-empresa { background: var(--cor-primaria-clara); border-radius: 10px; padding: 10px 12px; }
+.escolha-empresa p { margin: 0 0 8px; font-size: 0.85rem; font-weight: 600; }
+.me-grupo { font-size: 0.9rem; color: var(--cor-primaria-escura); margin: 6px 0 0; }
+.item-meu-estoque { cursor: default; }
+.item-meu-estoque:active { background: white; }
+.item-meu-estoque .botao-status-opcao { flex-shrink: 0; }
+.item-equipamento-tecnico { font-size: 0.8rem; font-weight: 600; color: var(--cor-primaria-escura); }

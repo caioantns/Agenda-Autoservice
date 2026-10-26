@@ -98,7 +98,10 @@ class Servico(db.Model):
         }
 
 
+# Status que o admin escolhe direto na tela de Estoque.
 STATUS_ESTOQUE_OPCOES = ["Disponível", "Utilizado", "Indisponível"]
+# Status automático quando um técnico retira o equipamento lendo o código.
+STATUS_COM_TECNICO = "Com técnico"
 
 
 class Equipamento(db.Model):
@@ -109,16 +112,30 @@ class Equipamento(db.Model):
     modelo = db.Column(db.String(120), default="")
     codigo = db.Column(db.String(80), nullable=False)  # ID/número de série/patrimônio do equipamento
     status = db.Column(db.String(20), default="Disponível")
+    # Técnico que está com o equipamento (só vale quando status == "Com técnico").
+    tecnico = db.Column(db.String(80), default="")
+    retirado_em = db.Column(db.DateTime, nullable=True)  # horário de Brasília
     atualizado_em = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self):
+        com_tecnico = self.status == STATUS_COM_TECNICO
         return {
             "id": self.id,
             "empresa": self.empresa,
             "modelo": self.modelo or "",
             "codigo": self.codigo,
             "status": self.status or "Disponível",
+            "tecnico": (self.tecnico or "") if com_tecnico else "",
+            "retirado_em": self.retirado_em.strftime("%d/%m/%Y %H:%M")
+            if (com_tecnico and self.retirado_em) else "",
         }
+
+    def voltar_para_estoque(self, novo_status):
+        """Muda o status e, se o equipamento saiu das mãos do técnico, limpa o vínculo."""
+        self.status = novo_status
+        if novo_status != STATUS_COM_TECNICO:
+            self.tecnico = ""
+            self.retirado_em = None
 
 
 class ListaValor(db.Model):

@@ -88,10 +88,10 @@ async function carregarEquipamentosDaEmpresa() {
 
 document.getElementById("form-cadastro").addEventListener("submit", async (ev) => {
   ev.preventDefault();
-  await enviarFormulario(false);
+  await enviarFormulario();
 });
 
-async function enviarFormulario(ignorarConflito) {
+async function enviarFormulario() {
   const valorNumerico = parseValorInput(document.getElementById("f-valor").value);
   if (valorNumerico === null) {
     mostrarToast("Valor inválido. Use algo como 150,00.", "erro");
@@ -145,17 +145,9 @@ async function enviarFormulario(ignorarConflito) {
     equipamento_retirado_codigo: equipamentoRetirado,
     equipamento_instalado_codigos: equipamentosInstalados,
     houve_troca_equipamento: houveTrocaEquipamento,
-    ignorar_conflito: ignorarConflito,
   };
 
   const resultado = await apiEnviar("/api/servicos", "POST", corpo);
-
-  if (resultado.status === 409 && resultado.dados.conflito) {
-    if (confirm(resultado.dados.mensagem)) {
-      await enviarFormulario(true);
-    }
-    return;
-  }
 
   if (!resultado.ok) {
     mostrarToast(resultado.dados.erro || "Erro ao salvar.", "erro");

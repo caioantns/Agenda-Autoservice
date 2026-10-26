@@ -16,6 +16,10 @@
   </div>
 </div>
 
+<a href="{{ url_for('meu_estoque_pagina') }}" class="botao botao-bloco link-estoque-tecnicos">
+  👷 Estoque dos técnicos
+</a>
+
 <div id="sem-empresa" class="cartao">
   <p class="vazio-lista">Selecione uma empresa acima para ver e gerenciar o estoque dela.</p>
 </div>
@@ -27,6 +31,9 @@
     </button>
     <button type="button" class="subaba-item" data-filtro="Disponível" onclick="mudarFiltroEstoque('Disponível')">
       🟢 Disponível <span class="subaba-contador" id="contador-disponivel"></span>
+    </button>
+    <button type="button" class="subaba-item" data-filtro="Com técnico" onclick="mudarFiltroEstoque('Com técnico')">
+      🔵 Com técnico <span class="subaba-contador" id="contador-com-tecnico"></span>
     </button>
     <button type="button" class="subaba-item" data-filtro="Utilizado" onclick="mudarFiltroEstoque('Utilizado')">
       🟡 Utilizado <span class="subaba-contador" id="contador-utilizado"></span>

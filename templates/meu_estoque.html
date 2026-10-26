@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block titulo %}Meu estoque - Agenda Autoservice{% endblock %}
+
+{% block conteudo %}
+<h2 class="titulo-pagina">📦 {{ 'Estoque dos técnicos' if role == 'admin' else 'Meu estoque' }}</h2>
+
+<div class="cartao formulario-retirada">
+  {% if role == 'admin' %}
+  <div class="campo">
+    <label>Técnico</label>
+    <select id="me-tecnico" onchange="carregarMeuEstoque()">
+      <option value="">Selecione o técnico...</option>
+      {% for t in tecnicos %}
+      <option value="{{ t }}">{{ t }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  {% endif %}
+
+  <div class="campo">
+    <label>Retirar equipamento do estoque</label>
+    <div class="linha-combo">
+      <input type="text" id="me-codigo" placeholder="Leia o código ou digite o ID"
+             autocomplete="off" autocapitalize="off" enterkeyhint="send">
+      <button type="button" class="botao-icone" title="Ler com a câmera" onclick="lerCodigoComCamera()">📷</button>
+    </div>
+    <small class="dica-campo">
+      Toque em 📷 para ler pela câmera. Leitor de código de barras (USB/Bluetooth) também
+      funciona: é só ler com o campo selecionado.
+    </small>
+  </div>
+
+  <div id="me-escolha-empresa" class="escolha-empresa escondido">
+    <p>Esse código está cadastrado em mais de uma empresa. De qual é o equipamento?</p>
+    <div id="me-botoes-empresa" class="botoes-status"></div>
+  </div>
+
+  <button type="button" class="botao botao-primario botao-bloco" onclick="registrarRetirada()">
+    📥 Registrar retirada
+  </button>
+</div>
+
+<div class="cartao total-mes">
+  <span id="me-rotulo-total">Equipamentos com você</span>
+  <strong id="me-total">0</strong>
+</div>
+
+<div id="me-lista" class="lista-equipamentos"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/scanner.js') }}"></script>
+<script src="{{ url_for('static', filename='js/meu_estoque.js') }}"></script>
+{% endblock %}

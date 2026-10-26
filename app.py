@@ -17,7 +17,8 @@ from openpyxl.styles import Font, PatternFill
 
 from models import (
     db, Servico, ListaValor, Equipamento, Usuario, STATUS_OPCOES, HORARIOS_OPCOES,
-    PERIODO_OPCOES, STATUS_ESTOQUE_OPCOES, codigos_instalados_lista, codigos_instalados_texto,
+    PERIODO_OPCOES, STATUS_ESTOQUE_OPCOES, STATUS_COM_TECNICO, codigos_instalados_lista,
+    codigos_instalados_texto,
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -327,7 +328,7 @@ def registrar_equipamento_retirado_no_estoque(empresa, codigo):
         return
     existente = Equipamento.query.filter_by(empresa=empresa, codigo=codigo).first()
     if existente:
-        existente.status = "Indisponível"
+        existente.voltar_para_estoque("Indisponível")
     else:
         db.session.add(Equipamento(empresa=empresa, modelo="", codigo=codigo, status="Indisponível"))
     db.session.commit()
@@ -342,23 +343,9 @@ def marcar_equipamento_instalado_utilizado(empresa, equipamento_instalado_codigo
     for codigo in codigos_instalados_lista(equipamento_instalado_codigo):
         existente = Equipamento.query.filter_by(empresa=empresa, codigo=codigo).first()
         if existente:
-            existente.status = "Utilizado"
+            # Sai do estoque do técnico (se estava com ele) e passa a Utilizado.
+            existente.voltar_para_estoque("Utilizado")
     db.session.commit()
-
-
-def verificar_conflito(tecnico, data, periodo, servico_id_ignorar=None):
-    """Procura outro serviço do mesmo técnico no mesmo dia e período."""
-    if not tecnico or not periodo:
-        return None
-    query = Servico.query.filter(
-        Servico.tecnico == tecnico,
-        Servico.data == data,
-        Servico.periodo == periodo,
-        Servico.status != "Cancelado",
-    )
-    if servico_id_ignorar is not None:
-        query = query.filter(Servico.id != servico_id_ignorar)
-    return query.first()
 
 
 # ----------------------------------------------------------------------
@@ -464,6 +451,16 @@ def estoque():
     )
 
 
+@app.route("/meu-estoque")
+@login_obrigatorio
+def meu_estoque_pagina():
+    listas = obter_listas()
+    return render_template(
+        "meu_estoque.html", aba_ativa="meu_estoque", role=session.get("role"),
+        tecnicos=listas["tecnico"], tecnico_nome=session.get("tecnico_nome", ""),
+    )
+
+
 @app.route("/usuarios")
 @admin_obrigatorio
 def usuarios_pagina():
@@ -523,13 +520,8 @@ def criar_servico():
     if erro_equipamento:
         return jsonify({"erro": erro_equipamento}), 400
 
-    conflito = verificar_conflito(tecnico, data_valida, periodo)
-    if conflito and not dados.get("ignorar_conflito"):
-        return jsonify({
-            "conflito": True,
-            "mensagem": f"{tecnico} já tem um serviço em {data_valida} ({periodo}) "
-                        f"(Empresa: {conflito.empresa}). Deseja salvar mesmo assim?",
-        }), 409
+    # Um técnico pode ter vários serviços no mesmo período (Manhã/Tarde/Integral),
+    # então não há checagem de conflito de agenda aqui.
 
     servico = Servico(
         data=data_valida, periodo=periodo, placa=placa, tipo_servico=tipo_servico,
@@ -603,14 +595,6 @@ def atualizar_servico(servico_id):
     )
     if erro_equipamento:
         return jsonify({"erro": erro_equipamento}), 400
-
-    conflito = verificar_conflito(tecnico, data_valida, periodo, servico_id_ignorar=servico.id)
-    if conflito and not dados.get("ignorar_conflito"):
-        return jsonify({
-            "conflito": True,
-            "mensagem": f"{tecnico} já tem um serviço em {data_valida} ({periodo}) "
-                        f"(Empresa: {conflito.empresa}). Deseja salvar mesmo assim?",
-        }), 409
 
     servico.data = data_valida
     servico.periodo = periodo
@@ -1101,7 +1085,12 @@ def buscar_ultima_os_do_equipamento(empresa, codigo):
 @app.route("/api/estoque/<empresa>")
 @login_obrigatorio
 def listar_estoque(empresa):
-    itens = Equipamento.query.filter_by(empresa=empresa).order_by(Equipamento.codigo).all()
+    query = Equipamento.query.filter_by(empresa=empresa)
+    tecnico_sessao = tecnico_da_sessao()
+    if tecnico_sessao is not None:
+        # Técnico só enxerga os equipamentos que estão com ele.
+        query = query.filter_by(status=STATUS_COM_TECNICO, tecnico=tecnico_sessao)
+    itens = query.order_by(Equipamento.codigo).all()
     resultado = []
     for item in itens:
         dados = item.to_dict()
@@ -1129,7 +1118,8 @@ def mudar_status_equipamento(item_id):
     novo_status = dados.get("status")
     if novo_status not in STATUS_ESTOQUE_OPCOES:
         return jsonify({"erro": "Status inválido."}), 400
-    item.status = novo_status
+    # Disponível/Utilizado/Indisponível tiram o equipamento das mãos do técnico.
+    item.voltar_para_estoque(novo_status)
     db.session.commit()
     return jsonify({"ok": True, "item": item.to_dict()})
 
@@ -1182,6 +1172,103 @@ def excluir_equipamento(item_id):
     db.session.delete(item)
     db.session.commit()
     return jsonify({"ok": True})
+
+
+# ----------------------------------------------------------------------
+# API: Estoque do técnico (equipamentos que cada técnico retirou)
+# ----------------------------------------------------------------------
+
+def tecnico_alvo_do_estoque(nome_enviado):
+    """Técnico logado: sempre ele mesmo (ignora o que veio da tela).
+    Admin: o técnico escolhido na tela, que precisa estar na lista."""
+    tecnico_sessao = tecnico_da_sessao()
+    if tecnico_sessao is not None:
+        return tecnico_sessao or None
+    nome = (nome_enviado or "").strip()
+    if nome and valor_existe_na_lista("tecnico", nome):
+        return nome
+    return None
+
+
+@app.route("/api/meu-estoque")
+@login_obrigatorio
+def listar_meu_estoque():
+    tecnico = tecnico_alvo_do_estoque(request.args.get("tecnico"))
+    if not tecnico:
+        return jsonify({"tecnico": "", "itens": []})
+    itens = (
+        Equipamento.query.filter_by(status=STATUS_COM_TECNICO, tecnico=tecnico)
+        .order_by(Equipamento.empresa, Equipamento.codigo).all()
+    )
+    return jsonify({"tecnico": tecnico, "itens": [i.to_dict() for i in itens]})
+
+
+@app.route("/api/meu-estoque/retirar", methods=["POST"])
+@login_obrigatorio
+def retirar_equipamento():
+    """O técnico lê o código de barras (ou digita o ID) e o equipamento sai do
+    estoque principal para o estoque dele. Se o mesmo código existir em mais
+    de uma empresa, devolve a lista para a tela perguntar qual é."""
+    dados = request.get_json(force=True) or {}
+    tecnico = tecnico_alvo_do_estoque(dados.get("tecnico"))
+    if not tecnico:
+        return jsonify({"erro": "Escolha o técnico que está retirando o equipamento."}), 400
+
+    codigo = (dados.get("codigo") or "").strip()
+    if not codigo:
+        return jsonify({"erro": "Leia ou digite o código do equipamento."}), 400
+
+    query = Equipamento.query.filter_by(codigo=codigo)
+    empresa = (dados.get("empresa") or "").strip()
+    if empresa:
+        query = query.filter_by(empresa=empresa)
+    encontrados = query.order_by(Equipamento.empresa).all()
+
+    if not encontrados:
+        return jsonify({
+            "erro": f'O código "{codigo}" não está cadastrado no estoque. '
+                    f"Peça para o administrador cadastrar antes de retirar."
+        }), 404
+    if len(encontrados) > 1:
+        return jsonify({
+            "escolher_empresa": True,
+            "codigo": codigo,
+            "empresas": [e.empresa for e in encontrados],
+        }), 409
+
+    item = encontrados[0]
+    if item.status == STATUS_COM_TECNICO:
+        if item.tecnico == tecnico:
+            return jsonify({"erro": f'O equipamento "{codigo}" já está no estoque de {tecnico}.'}), 400
+        return jsonify({
+            "erro": f'O equipamento "{codigo}" já está com {item.tecnico}. '
+                    f"Ele precisa devolver antes (ou o administrador)."
+        }), 400
+    if item.status == "Utilizado":
+        return jsonify({"erro": f'O equipamento "{codigo}" consta como já instalado em um cliente.'}), 400
+    if item.status == "Indisponível":
+        return jsonify({"erro": f'O equipamento "{codigo}" está Indisponível (aguardando inspeção).'}), 400
+
+    item.status = STATUS_COM_TECNICO
+    item.tecnico = tecnico
+    item.retirado_em = datetime.now(FUSO_BRASIL).replace(tzinfo=None)
+    db.session.commit()
+    return jsonify({"ok": True, "item": item.to_dict()})
+
+
+@app.route("/api/meu-estoque/<int:item_id>/devolver", methods=["POST"])
+@login_obrigatorio
+def devolver_equipamento(item_id):
+    """Devolve ao estoque principal (Disponível) um equipamento que estava com o técnico."""
+    item = Equipamento.query.get_or_404(item_id)
+    tecnico_sessao = tecnico_da_sessao()
+    if item.status != STATUS_COM_TECNICO:
+        return jsonify({"erro": "Esse equipamento não está com nenhum técnico."}), 400
+    if tecnico_sessao is not None and item.tecnico != tecnico_sessao:
+        return jsonify({"erro": "Esse equipamento não está com você."}), 403
+    item.voltar_para_estoque("Disponível")
+    db.session.commit()
+    return jsonify({"ok": True, "item": item.to_dict()})
 
 
 # ----------------------------------------------------------------------
@@ -1277,8 +1364,30 @@ def excluir_usuario(usuario_id):
 # Inicialização
 # ----------------------------------------------------------------------
 
+def adicionar_colunas_que_faltam():
+    """db.create_all() cria tabelas novas, mas não adiciona colunas novas em
+    tabelas que já existem. Aqui adicionamos as que faltarem, sem apagar dados
+    (funciona tanto no SQLite quanto no Postgres)."""
+    from sqlalchemy import inspect, text
+    colunas_novas = {
+        "equipamentos": [
+            ("tecnico", "VARCHAR(80) DEFAULT ''"),
+            ("retirado_em", "TIMESTAMP"),
+        ],
+    }
+    inspetor = inspect(db.engine)
+    for tabela, colunas in colunas_novas.items():
+        existentes = {c["name"] for c in inspetor.get_columns(tabela)}
+        for nome, tipo in colunas:
+            if nome not in existentes:
+                db.session.execute(text(f"ALTER TABLE {tabela} ADD COLUMN {nome} {tipo}"))
+                db.session.commit()
+                print(f"Coluna '{nome}' adicionada em '{tabela}'.")
+
+
 with app.app_context():
     db.create_all()
+    adicionar_colunas_que_faltam()
     if Usuario.query.count() == 0:
         if EM_PRODUCAO and not os.environ.get("ADMIN_SENHA"):
             raise RuntimeError(
