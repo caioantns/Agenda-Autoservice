@@ -4,6 +4,28 @@
 {% block conteudo %}
 <h2 class="titulo-pagina">📝 Novo serviço</h2>
 
+<!-- Importar a OS da empresa (PDF ou foto): preenche o formulário abaixo para conferência -->
+<div class="cartao importar-os">
+  <div class="importar-os-topo">
+    <div class="importar-os-texto">
+      <strong>📄 Importar OS da empresa</strong>
+      <small>
+        Envie o PDF da OS (SAT, CEABS, Zen{% if ia_configurada %} ou outro modelo; também lê foto do papel{% endif %})
+        e o formulário é preenchido. Confira antes de adicionar.
+      </small>
+    </div>
+    <label for="arquivo-os" class="botao botao-primario botao-importar-os">Escolher arquivo</label>
+  </div>
+  <input type="file" id="arquivo-os" accept="application/pdf,image/*" class="escondido">
+  {% if session.get('role') == 'admin' %}
+  <a href="{{ url_for('os_novas_pagina') }}" class="link-caixa-os">
+    📥 Vários PDFs de uma vez? Use a caixa de OS novas{% if os_novas %} ({{ os_novas }} esperando){% endif %} →
+  </a>
+  {% endif %}
+  <p id="importar-os-status" class="importar-os-status escondido"></p>
+  <ul id="importar-os-avisos" class="importar-os-avisos escondido"></ul>
+</div>
+
 <form id="form-cadastro" class="cartao formulario">
   <div class="campo">
     <label>Data</label>
@@ -44,6 +66,27 @@
       </select>
       <button type="button" class="botao-icone" onclick="abrirGerenciarLista('empresa', 'Empresa')">⚙</button>
     </div>
+  </div>
+
+  <div class="campo">
+    <label>Cliente</label>
+    <input type="text" id="f-cliente_nome" maxlength="150" placeholder="Nome de quem será atendido">
+  </div>
+  <div class="campo">
+    <label>Telefone do cliente</label>
+    <input type="tel" id="f-cliente_telefone" maxlength="30" placeholder="(21) 99999-9999">
+  </div>
+  <div class="campo">
+    <label>Placa</label>
+    <input type="text" id="f-placa" maxlength="10" placeholder="ABC1D23" autocapitalize="characters">
+  </div>
+  <div class="campo">
+    <label>Nº da OS <span class="rotulo-opcional">(da empresa)</span></label>
+    <input type="text" id="f-numero_os" maxlength="40">
+  </div>
+  <div class="campo campo-largo">
+    <label>Veículo</label>
+    <input type="text" id="f-veiculo" maxlength="150" placeholder="Marca / modelo">
   </div>
 
   <!-- CEP + número + endereço: no computador ficam lado a lado numa linha inteira -->

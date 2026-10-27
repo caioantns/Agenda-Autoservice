@@ -98,3 +98,16 @@ servicos_web/
     ├── js/                → comportamento das páginas
     └── manifest.json      → permite "instalar" no celular
 ```
+
+## Importar OS da empresa (PDF ou foto)
+
+Na aba **Cadastro**, o botão **Importar OS da empresa** lê o PDF da ordem de
+serviço e preenche o formulário (cliente, telefone, endereço, placa, veículo,
+nº da OS, data, período, empresa e observações) para conferência antes de salvar.
+
+- **SAT Company, CEABS e Zen Seguros**: lidos direto do texto do PDF, sem custo
+  (arquivo `leitor_os.py`).
+- **Outros modelos de OS ou foto do papel**: usam a IA do Claude. Para ativar,
+  crie uma chave em https://console.anthropic.com e adicione no Railway, em
+  **Variables**, a variável `ANTHROPIC_API_KEY`. A cobrança é por uso.
+  Opcional: `ANTHROPIC_MODEL` para escolher outro modelo (padrão `claude-sonnet-5-5`).

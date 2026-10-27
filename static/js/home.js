@@ -7,6 +7,10 @@ const CARDS_BASE = [
     icone: "📝", href: "/cadastro", cor: "#2F5496",
   },
   {
+    id: "os_novas", titulo: "OS novas", desc: "Conferir OS recebidas e mandar para a agenda",
+    icone: "📥", href: "/os-novas", cor: "#C0392B", somenteAdmin: true,
+  },
+  {
     id: "agenda", titulo: "Agenda", desc: "Ver o calendário e os clientes do dia",
     icone: "📅", href: "/agenda", cor: "#1F8A70",
   },
@@ -53,12 +57,13 @@ function StatChip({ icone, valor, label, carregando }) {
   );
 }
 
-function CardAcesso({ card, indice }) {
+function CardAcesso({ card, indice, contador }) {
   const estilo = { transitionDelay: `${indice * 70}ms`, "--cor-card": card.cor };
   return h("a", { href: card.href, className: "card-acesso", style: estilo },
     h("div", { className: "card-acesso-icone" }, card.icone),
     h("div", { className: "card-acesso-textos" },
-      h("span", { className: "card-acesso-titulo" }, card.titulo),
+      h("span", { className: "card-acesso-titulo" }, card.titulo,
+        contador ? h("span", { className: "card-acesso-badge" }, contador) : null),
       h("span", { className: "card-acesso-desc" }, card.desc),
     ),
     h("span", { className: "card-acesso-seta" }, "→"),
@@ -93,7 +98,10 @@ function HomeApp() {
       window.APP_ROLE === "admin" && h(StatChip, { icone: "📦", valor: carregando ? "" : stats.equipamentos_fora_do_estoque, label: "Fora do estoque", carregando }),
     ),
     h("div", { className: `home-cards ${montado ? "home-cards-visivel" : ""}` },
-      CARDS.map((card, i) => h(CardAcesso, { key: card.id, card, indice: i })),
+      CARDS.map((card, i) => h(CardAcesso, {
+        key: card.id, card, indice: i,
+        contador: card.id === "os_novas" && stats ? stats.os_novas : 0,
+      })),
     ),
   );
 }

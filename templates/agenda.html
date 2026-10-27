@@ -104,6 +104,26 @@
         {% endfor %}
       </select>
     </div>
+    <div class="campo">
+      <label>Cliente</label>
+      <input type="text" id="e-cliente_nome" maxlength="150" placeholder="Nome de quem será atendido">
+    </div>
+    <div class="campo">
+      <label>Telefone do cliente</label>
+      <input type="tel" id="e-cliente_telefone" maxlength="30" placeholder="(21) 99999-9999">
+    </div>
+    <div class="campo">
+      <label>Placa</label>
+      <input type="text" id="e-placa" maxlength="10" placeholder="ABC1D23" autocapitalize="characters">
+    </div>
+    <div class="campo">
+      <label>Nº da OS <span class="rotulo-opcional">(da empresa)</span></label>
+      <input type="text" id="e-numero_os" maxlength="40">
+    </div>
+    <div class="campo campo-largo">
+      <label>Veículo</label>
+      <input type="text" id="e-veiculo" maxlength="150" placeholder="Marca / modelo">
+    </div>
     <!-- CEP + número + endereço: no computador ficam lado a lado numa linha inteira -->
     <div class="campo-largo bloco-endereco">
       <div class="campo">

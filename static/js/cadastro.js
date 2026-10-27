@@ -2,10 +2,12 @@
 const limparCepCadastro = configurarBuscaCep("f");
 
 let categoriaAtualModal = null;
+let osPendenteId = null; // preenchido quando a tela é aberta pela caixa de OS novas
 
 function definirDataHojeNoCampo() {
+  // Data local do aparelho (toISOString usaria UTC e, depois das 21h, já marcaria o dia seguinte).
   const hoje = new Date();
-  const iso = hoje.toISOString().slice(0, 10); // aaaa-mm-dd
+  const iso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
   document.getElementById("f-data").value = iso;
 }
 
@@ -138,7 +140,13 @@ async function enviarFormulario() {
     tipo_servico: tipoServico.trim(),
     empresa: document.getElementById("f-empresa").value.trim(),
     endereco: document.getElementById("f-endereco").value.trim(),
+    numero_os: document.getElementById("f-numero_os").value.trim(),
+    cliente_nome: document.getElementById("f-cliente_nome").value.trim(),
+    cliente_telefone: document.getElementById("f-cliente_telefone").value.trim(),
+    placa: document.getElementById("f-placa").value.trim(),
+    veiculo: document.getElementById("f-veiculo").value.trim(),
     tecnico: document.getElementById("f-tecnico").value.trim(),
+    os_pendente_id: osPendenteId,
     status: status,
     valor: valorNumerico,
     observacoes: document.getElementById("f-observacoes").value.trim(),
@@ -155,6 +163,11 @@ async function enviarFormulario() {
   }
 
   mostrarToast("✅ Serviço adicionado!");
+  // Veio da caixa de OS novas: volta para ela para continuar conferindo.
+  if (osPendenteId) {
+    setTimeout(() => { window.location.href = "/os-novas"; }, 700);
+    return;
+  }
   limparFormulario();
 }
 
@@ -163,6 +176,9 @@ function limparFormulario() {
   document.getElementById("f-empresa").value = "";
   document.getElementById("f-endereco").value = "";
   if (limparCepCadastro) limparCepCadastro();
+  CAMPOS_CLIENTE.forEach((campo) => { document.getElementById(`f-${campo}`).value = ""; });
+  osPendenteId = null;
+  limparImportacaoOS();
   document.getElementById("f-tecnico").value = "";
   document.getElementById("f-status").value = "Agendado";
   document.getElementById("f-valor").value = "";
@@ -243,3 +259,135 @@ async function removerItemLista(valor) {
 function fecharModalLista() {
   document.getElementById("modal-lista").classList.add("escondido");
 }
+
+// --- Importar OS da empresa (PDF ou foto) ---
+// O servidor lê o arquivo e devolve os campos; aqui só preenchemos o
+// formulário. Nada é salvo até a pessoa conferir e tocar em "Adicionar".
+
+const CAMPOS_CLIENTE = ["numero_os", "cliente_nome", "cliente_telefone", "placa", "veiculo"];
+const entradaArquivoOS = document.getElementById("arquivo-os");
+
+function mostrarStatusImportacao(texto, tipo) {
+  const status = document.getElementById("importar-os-status");
+  status.textContent = texto;
+  status.className = "importar-os-status" + (tipo ? ` ${tipo}` : "");
+  status.classList.toggle("escondido", !texto);
+}
+
+function limparImportacaoOS() {
+  mostrarStatusImportacao("");
+  const avisos = document.getElementById("importar-os-avisos");
+  avisos.innerHTML = "";
+  avisos.classList.add("escondido");
+  document.querySelectorAll(".campo-importado").forEach((el) => el.classList.remove("campo-importado"));
+  entradaArquivoOS.value = "";
+}
+
+function marcarImportado(elemento) {
+  elemento.classList.add("campo-importado");
+  // Ao mexer no campo, tira o destaque.
+  elemento.addEventListener("input", () => elemento.classList.remove("campo-importado"), { once: true });
+  elemento.addEventListener("change", () => elemento.classList.remove("campo-importado"), { once: true });
+}
+
+function preencherCampo(id, valor) {
+  const elemento = document.getElementById(id);
+  if (!elemento || elemento.disabled) return false;
+  if (elemento.tagName === "SELECT") {
+    const existe = [...elemento.options].some((o) => o.value === valor);
+    elemento.value = existe ? valor : "";
+    if (!existe) return false;
+  } else {
+    elemento.value = valor || "";
+  }
+  if (valor) marcarImportado(elemento);
+  return !!valor;
+}
+
+function preencherComOS(c) {
+  // Data: vazia quando a OS vem "a combinar", para não salvar com a data de hoje sem querer.
+  document.getElementById("f-data").value = c.data ? converterDataParaISO(c.data) : "";
+  if (c.data) marcarImportado(document.getElementById("f-data"));
+  preencherCampo("f-periodo", c.periodo);
+
+  preencherCampo("f-tipo_servico", c.tipo_servico);
+  atualizarVisibilidadeEquipamentos();
+  preencherCampo("f-empresa", c.empresa);
+  carregarEquipamentosDaEmpresa();
+  if (c.tecnico) preencherCampo("f-tecnico", c.tecnico);
+
+  CAMPOS_CLIENTE.forEach((campo) => preencherCampo(`f-${campo}`, c[campo]));
+
+  if (limparCepCadastro) limparCepCadastro();
+  const endereco = c.cep && c.endereco ? `${c.endereco}, ${c.cep}` : c.endereco;
+  preencherCampo("f-endereco", endereco);
+  preencherCampo("f-observacoes", c.observacoes);
+}
+
+async function importarOS(arquivo) {
+  limparImportacaoOS();
+  mostrarStatusImportacao("⏳ Lendo a OS…", "carregando");
+  const formData = new FormData();
+  formData.append("arquivo", arquivo);
+
+  let resposta, dados;
+  try {
+    resposta = await fetch("/api/servicos/ler-os", { method: "POST", body: formData });
+    dados = await resposta.json().catch(() => ({}));
+  } catch (e) {
+    mostrarStatusImportacao("Não consegui enviar o arquivo. Confira sua internet.", "erro");
+    return;
+  }
+  if (resposta.status === 413) {
+    mostrarStatusImportacao("Arquivo grande demais (máximo 20 MB).", "erro");
+    return;
+  }
+  if (!resposta.ok) {
+    mostrarStatusImportacao(dados.erro || "Não consegui ler essa OS.", "erro");
+    return;
+  }
+
+  preencherComOS(dados.campos);
+  const origem = dados.origem === "ia" ? " (lida pela IA)" : "";
+  mostrarStatusImportacao(`✅ OS importada${origem}. Confira os campos destacados e toque em Adicionar.`, "ok");
+
+  const lista = document.getElementById("importar-os-avisos");
+  (dados.avisos || []).forEach((texto) => {
+    const li = document.createElement("li");
+    li.textContent = texto;
+    lista.appendChild(li);
+  });
+  lista.classList.toggle("escondido", !(dados.avisos || []).length);
+  document.querySelector(".importar-os").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+entradaArquivoOS.addEventListener("change", () => {
+  const arquivo = entradaArquivoOS.files[0];
+  if (arquivo) importarOS(arquivo);
+});
+
+// Aberto pela caixa de "OS novas" (/cadastro?pendente=ID): carrega a OS para revisão.
+async function carregarOSPendente() {
+  const id = new URLSearchParams(window.location.search).get("pendente");
+  if (!id) return;
+  try {
+    const item = await apiGet(`/api/os-pendentes/${encodeURIComponent(id)}`);
+    if (item.status !== "nova") {
+      mostrarStatusImportacao("Essa OS já foi tratada na caixa de OS novas.", "erro");
+      return;
+    }
+    osPendenteId = item.id;
+    preencherComOS(item.campos);
+    mostrarStatusImportacao("📥 OS da caixa de entrada: confira e toque em Adicionar.", "ok");
+    const lista = document.getElementById("importar-os-avisos");
+    (item.avisos || []).forEach((texto) => {
+      const li = document.createElement("li");
+      li.textContent = texto;
+      lista.appendChild(li);
+    });
+    lista.classList.toggle("escondido", !(item.avisos || []).length);
+  } catch (e) {
+    mostrarStatusImportacao("Não encontrei essa OS na caixa de entrada.", "erro");
+  }
+}
+carregarOSPendente();

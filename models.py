@@ -1,5 +1,6 @@
 """Modelos de dados do Agenda Autoservice (versão web)."""
 
+import json
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
 
@@ -71,6 +72,11 @@ class Servico(db.Model):
     equipamento_retirado_codigo = db.Column(db.String(80), default="")
     equipamento_instalado_codigo = db.Column(db.String(80), default="")
     houve_troca_equipamento = db.Column(db.Boolean, default=None, nullable=True)
+    # Dados que vêm da OS da empresa (preenchidos à mão ou pela importação do PDF).
+    numero_os = db.Column(db.String(40), default="")
+    cliente_nome = db.Column(db.String(150), default="")
+    cliente_telefone = db.Column(db.String(30), default="")
+    veiculo = db.Column(db.String(150), default="")
     criado_em = db.Column(db.DateTime, default=datetime.utcnow)
     atualizado_em = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -95,6 +101,10 @@ class Servico(db.Model):
             # os códigos ficam guardados juntos no banco, separados por vírgula.
             "equipamento_instalado_codigos": codigos_instalados_lista(self.equipamento_instalado_codigo),
             "houve_troca_equipamento": self.houve_troca_equipamento,
+            "numero_os": self.numero_os or "",
+            "cliente_nome": self.cliente_nome or "",
+            "cliente_telefone": self.cliente_telefone or "",
+            "veiculo": self.veiculo or "",
         }
 
 
@@ -147,3 +157,45 @@ class ListaValor(db.Model):
     valor = db.Column(db.String(120), nullable=False)
 
     __table_args__ = (db.UniqueConstraint("categoria", "valor", name="uq_categoria_valor"),)
+
+
+class OSPendente(db.Model):
+    """Caixa de entrada "OS novas": OS lidas de PDF/foto (ou, no futuro, trazidas
+    do portal da empresa) que ainda precisam ser conferidas antes de entrar na agenda."""
+    __tablename__ = "os_pendentes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    criado_em = db.Column(db.DateTime, default=datetime.utcnow)
+    origem = db.Column(db.String(30), default="upload")       # upload / ia / robô de cada portal
+    nome_arquivo = db.Column(db.String(200), default="")
+    chave = db.Column(db.String(200), default="", index=True)  # evita trazer a mesma OS duas vezes
+    campos_json = db.Column(db.Text, default="{}")
+    avisos_json = db.Column(db.Text, default="[]")
+    status = db.Column(db.String(20), default="nova")         # nova / importada / descartada
+    servico_id = db.Column(db.Integer, nullable=True)
+
+    @property
+    def campos(self):
+        try:
+            return json.loads(self.campos_json or "{}")
+        except ValueError:
+            return {}
+
+    @property
+    def avisos(self):
+        try:
+            return json.loads(self.avisos_json or "[]")
+        except ValueError:
+            return []
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "origem": self.origem,
+            "nome_arquivo": self.nome_arquivo or "",
+            "campos": self.campos,
+            "avisos": self.avisos,
+            "status": self.status,
+            "servico_id": self.servico_id,
+            "criado_em": self.criado_em.strftime("%d/%m/%Y %H:%M") if self.criado_em else "",
+        }

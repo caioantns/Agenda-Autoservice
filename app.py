@@ -7,6 +7,8 @@ Em produção (Railway/Render): gunicorn app:app
 import os
 from zoneinfo import ZoneInfo
 import io
+import json
+import re
 from datetime import datetime, date, timedelta
 from functools import wraps
 
@@ -15,8 +17,9 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
+import leitor_os
 from models import (
-    db, Servico, ListaValor, Equipamento, Usuario, STATUS_OPCOES, HORARIOS_OPCOES,
+    db, Servico, ListaValor, Equipamento, Usuario, OSPendente, STATUS_OPCOES, HORARIOS_OPCOES,
     PERIODO_OPCOES, STATUS_ESTOQUE_OPCOES, STATUS_COM_TECNICO, codigos_instalados_lista,
     codigos_instalados_texto,
 )
@@ -28,6 +31,7 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
     "DATABASE_URL", f"sqlite:///{os.path.join(BASE_DIR, 'servicos.db')}"
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # uploads (OS em PDF/foto, backups) até 20 MB
 
 # Detecta se está rodando numa hospedagem (Railway/Render/PythonAnywhere).
 # Localmente (python app.py) nada disso existe e o app usa valores de teste.
@@ -300,6 +304,25 @@ def validar_equipamento_obrigatorio(
     return None
 
 
+CAMPOS_DA_OS = {
+    # campo: (tamanho máximo, transformar)
+    "numero_os": (40, str.strip),
+    "cliente_nome": (150, str.strip),
+    "cliente_telefone": (30, str.strip),
+    "veiculo": (150, str.strip),
+    "placa": (10, lambda v: v.strip().upper().replace("-", "").replace(" ", "")),
+}
+
+
+def aplicar_campos_da_os(servico, dados):
+    """Preenche Nº da OS, cliente, telefone, veículo e placa. Só mexe nos campos
+    que vieram na requisição, para uma tela que não mostra esses campos não
+    apagar o que já estava salvo."""
+    for campo, (tamanho, transformar) in CAMPOS_DA_OS.items():
+        if campo in dados:
+            setattr(servico, campo, transformar(str(dados.get(campo) or ""))[:tamanho])
+
+
 def montar_codigos_instalados(dados):
     """Lê os códigos de equipamento instalado enviados pelo front. Aceita a lista
     nova (`equipamento_instalado_codigos`, um item por campo adicionado na tela)
@@ -397,7 +420,10 @@ def home_stats():
             Equipamento.status != "Disponível"
         ).count()
 
+    os_novas = OSPendente.query.filter_by(status="nova").count() if usuario_atual_e_admin() else 0
+
     return jsonify({
+        "os_novas": os_novas,
         "servicos_hoje": servicos_hoje,
         "proximos_7_dias": proximos_7_dias,
         "total_empresas": total_empresas,
@@ -413,6 +439,8 @@ def cadastro():
     return render_template(
         "cadastro.html", listas=listas, status_opcoes=STATUS_OPCOES,
         horarios_opcoes=HORARIOS_OPCOES, hoje=hoje, aba_ativa="cadastro",
+        ia_configurada=leitor_os.ia_configurada(),
+        os_novas=OSPendente.query.filter_by(status="nova").count() if usuario_atual_e_admin() else 0,
         role=session.get("role"), tecnico_nome=session.get("tecnico_nome", ""),
     )
 
@@ -475,13 +503,16 @@ def usuarios_pagina():
 @app.route("/api/servicos", methods=["POST"])
 @login_obrigatorio
 def criar_servico():
-    dados = request.get_json(force=True)
+    return criar_servico_a_partir_de(request.get_json(force=True) or {})
 
+
+def criar_servico_a_partir_de(dados):
+    """Valida e cria um serviço. Usada pelo cadastro e pela caixa de "OS novas"
+    (para as duas seguirem exatamente as mesmas regras)."""
     data_valida = validar_data(dados.get("data"))
     if not data_valida:
         return jsonify({"erro": "Data inválida. Use o formato dd/mm/aaaa."}), 400
 
-    placa = (dados.get("placa") or "").strip().upper()
 
     tipo_servico = (dados.get("tipo_servico") or "").strip()
     if not tipo_servico:
@@ -524,7 +555,7 @@ def criar_servico():
     # então não há checagem de conflito de agenda aqui.
 
     servico = Servico(
-        data=data_valida, periodo=periodo, placa=placa, tipo_servico=tipo_servico,
+        data=data_valida, periodo=periodo, tipo_servico=tipo_servico,
         empresa=empresa, endereco=(dados.get("endereco") or "").strip(),
         tecnico=tecnico, status=status, valor=valor,
         observacoes=(dados.get("observacoes") or "").strip(),
@@ -532,6 +563,7 @@ def criar_servico():
         equipamento_instalado_codigo=equipamento_instalado_codigo,
         houve_troca_equipamento=houve_troca_equipamento,
     )
+    aplicar_campos_da_os(servico, dados)
     db.session.add(servico)
     db.session.commit()
 
@@ -544,7 +576,240 @@ def criar_servico():
     registrar_valor_se_novo("tipo_servico", tipo_servico)
     registrar_valor_se_novo("tecnico", tecnico)
 
+    # Veio da caixa de "OS novas": marca a OS como já levada para a agenda.
+    pendente_id = dados.get("os_pendente_id")
+    if pendente_id:
+        pendente = db.session.get(OSPendente, int(pendente_id)) if str(pendente_id).isdigit() else None
+        if pendente and pendente.status == "nova":
+            pendente.status = "importada"
+            pendente.servico_id = servico.id
+            db.session.commit()
+
     return jsonify({"ok": True, "servico": servico.to_dict()})
+
+
+def casar_com_lista(texto, opcoes):
+    """Acha na lista cadastrada o item que corresponde ao texto lido da OS
+    (ignora acento e maiúscula; aceita 'SAT' ~ 'SAT Company')."""
+    alvo = normalizar_texto(texto)
+    if not alvo:
+        return ""
+    normalizadas = [(normalizar_texto(o), o) for o in opcoes]
+    for n, original in normalizadas:
+        if n == alvo:
+            return original
+    palavras_alvo = set(re.findall(r"[a-z0-9]{3,}", alvo))
+    for n, original in normalizadas:
+        palavras = set(re.findall(r"[a-z0-9]{3,}", n))
+        if palavras and (palavras <= palavras_alvo or palavras_alvo <= palavras):
+            return original
+    return ""
+
+
+def casar_tecnico(texto, tecnicos):
+    """'MARCUS VINICIUS DE OLIVEIRA' -> 'Marcus', se só houver um Marcus na lista."""
+    exato = casar_com_lista(texto, tecnicos)
+    if exato:
+        return exato
+    primeiro = normalizar_texto(texto).split(" ")[0] if texto else ""
+    candidatos = [t for t in tecnicos if normalizar_texto(t).split(" ")[0] == primeiro]
+    return candidatos[0] if primeiro and len(candidatos) == 1 else ""
+
+
+def analisar_os(conteudo):
+    """Lê o arquivo da OS e devolve (campos, origem, avisos), com empresa, tipo
+    e técnico já casados com as listas cadastradas. Levanta ErroLeituraOS."""
+    listas = obter_listas()
+    campos, origem = leitor_os.ler_os(conteudo, listas["empresa"], listas["tipo_servico"])
+
+    avisos = []
+    empresa_lida = campos["empresa"]
+    campos["empresa_lida"] = empresa_lida
+    campos["empresa"] = casar_com_lista(empresa_lida, listas["empresa"])
+    if empresa_lida and not campos["empresa"]:
+        avisos.append(f'A OS é da empresa "{empresa_lida}", que não está na sua lista. '
+                      f"Cadastre-a ou escolha a certa.")
+
+    tipo_lido = campos["tipo_servico"]
+    campos["tipo_servico"] = casar_com_lista(tipo_lido, listas["tipo_servico"])
+    if tipo_lido and not campos["tipo_servico"]:
+        avisos.append(f'Tipo de serviço "{tipo_lido}" não está na sua lista.')
+
+    tecnico_lido = campos["tecnico"]
+    campos["tecnico"] = casar_tecnico(tecnico_lido, listas["tecnico"]) if usuario_atual_e_admin() else ""
+    if (tecnico_lido and usuario_atual_e_admin() and not campos["tecnico"]
+            and "autoservice" not in normalizar_texto(tecnico_lido)):
+        avisos.append(f'A OS indica o técnico "{tecnico_lido}", que não foi encontrado na lista.')
+
+    if not campos["data"] or not campos["periodo"]:
+        avisos.append("A OS não traz data e/ou período (a combinar): preencha antes de salvar.")
+    else:
+        try:
+            if datetime.strptime(campos["data"], "%d/%m/%Y").date() < hoje_brasil():
+                avisos.append(f"A data da OS ({campos['data']}) já passou. Confira se é isso mesmo.")
+        except ValueError:
+            campos["data"] = ""
+
+    if any("�" in str(v) for v in campos.values()):
+        avisos.append("Alguns acentos vieram ilegíveis no PDF (�). Confira nome e endereço.")
+
+    if campos["numero_os"]:
+        existente = Servico.query.filter_by(numero_os=campos["numero_os"]).order_by(Servico.id.desc()).first()
+        if existente:
+            avisos.insert(0, f"⚠️ A OS nº {campos['numero_os']} já foi cadastrada "
+                             f"(serviço de {existente.data}, {existente.status}). Cuidado para não duplicar.")
+    return campos, origem, avisos
+
+
+@app.route("/api/servicos/ler-os", methods=["POST"])
+@login_obrigatorio
+def ler_ordem_de_servico():
+    """Recebe o PDF/foto da OS e devolve os campos para preencher o cadastro.
+    Não salva nada: a pessoa confere na tela e salva normalmente."""
+    arquivo = request.files.get("arquivo")
+    if not arquivo:
+        return jsonify({"erro": "Escolha o PDF ou a foto da OS."}), 400
+    conteudo = arquivo.read()
+    if not conteudo:
+        return jsonify({"erro": "O arquivo está vazio."}), 400
+    try:
+        campos, origem, avisos = analisar_os(conteudo)
+    except leitor_os.ErroLeituraOS as e:
+        return jsonify({"erro": str(e)}), 422
+    return jsonify({"ok": True, "origem": origem, "campos": campos, "avisos": avisos})
+
+
+# ----------------------------------------------------------------------
+# Caixa de entrada "OS novas"
+# ----------------------------------------------------------------------
+
+def chave_da_os(campos):
+    """Identifica a mesma OS entre envios diferentes: nº da OS ou, quando a
+    empresa não numera (ex.: Zen), a placa."""
+    empresa = normalizar_texto(campos.get("empresa_lida") or campos.get("empresa"))
+    if campos.get("numero_os"):
+        return f"{empresa}|os:{normalizar_texto(campos['numero_os'])}"
+    if campos.get("placa"):
+        return f"{empresa}|placa:{campos['placa'].upper()}"
+    return ""
+
+
+def os_ja_existente(campos, chave):
+    """Motivo para não adicionar de novo, ou None."""
+    if chave:
+        pendente = OSPendente.query.filter(
+            OSPendente.chave == chave, OSPendente.status.in_(["nova", "importada"])
+        ).first()
+        if pendente:
+            return "já está na caixa de OS novas" if pendente.status == "nova" else "já foi levada para a agenda"
+    if campos.get("numero_os"):
+        servico = Servico.query.filter_by(numero_os=campos["numero_os"]).first()
+        if servico:
+            return f"já está na agenda (serviço de {servico.data})"
+    elif campos.get("placa") and campos.get("empresa"):
+        servico = Servico.query.filter(
+            Servico.placa == campos["placa"], Servico.empresa == campos["empresa"],
+            Servico.status.in_(["Agendado", "Em andamento"]),
+        ).first()
+        if servico:
+            return f"essa placa já tem serviço em aberto na agenda ({servico.data})"
+    return None
+
+
+def registrar_os_pendente(campos, avisos, origem, nome_arquivo=""):
+    """Guarda a OS na caixa de entrada. Devolve (pendente, motivo_ignorada).
+    Também será usada pelo robô dos portais."""
+    chave = chave_da_os(campos)
+    motivo = os_ja_existente(campos, chave)
+    if motivo:
+        return None, motivo
+    pendente = OSPendente(
+        criado_em=datetime.now(FUSO_BRASIL).replace(tzinfo=None),
+        origem=origem, nome_arquivo=(nome_arquivo or "")[:200], chave=chave,
+        campos_json=json.dumps(campos, ensure_ascii=False),
+        avisos_json=json.dumps(avisos, ensure_ascii=False),
+    )
+    db.session.add(pendente)
+    db.session.commit()
+    return pendente, None
+
+
+@app.route("/os-novas")
+@admin_obrigatorio
+def os_novas_pagina():
+    listas = obter_listas()
+    return render_template(
+        "os_novas.html", aba_ativa="os_novas", listas=listas,
+        ia_configurada=leitor_os.ia_configurada(),
+    )
+
+
+@app.route("/api/os-pendentes")
+@admin_obrigatorio
+def listar_os_pendentes():
+    itens = OSPendente.query.filter_by(status="nova").order_by(OSPendente.id).all()
+
+    def ordem(item):
+        try:
+            return (0, datetime.strptime(item.campos.get("data", ""), "%d/%m/%Y"), item.id)
+        except ValueError:
+            return (1, datetime.max, item.id)   # "a combinar" vai para o fim
+    itens.sort(key=ordem)
+    return jsonify([i.to_dict() for i in itens])
+
+
+@app.route("/api/os-pendentes", methods=["POST"])
+@admin_obrigatorio
+def enviar_os_pendente():
+    """Recebe UM arquivo (a tela manda vários, um de cada vez) e coloca na caixa."""
+    arquivo = request.files.get("arquivo")
+    if not arquivo:
+        return jsonify({"erro": "Nenhum arquivo enviado."}), 400
+    conteudo = arquivo.read()
+    if not conteudo:
+        return jsonify({"erro": "O arquivo está vazio."}), 400
+    try:
+        campos, origem, avisos = analisar_os(conteudo)
+    except leitor_os.ErroLeituraOS as e:
+        return jsonify({"erro": str(e)}), 422
+    pendente, motivo = registrar_os_pendente(campos, avisos, origem, arquivo.filename)
+    if motivo:
+        return jsonify({"ok": True, "ignorada": True, "motivo": motivo, "campos": campos})
+    return jsonify({"ok": True, "item": pendente.to_dict()})
+
+
+@app.route("/api/os-pendentes/<int:item_id>")
+@admin_obrigatorio
+def obter_os_pendente(item_id):
+    return jsonify(OSPendente.query.get_or_404(item_id).to_dict())
+
+
+@app.route("/api/os-pendentes/<int:item_id>/confirmar", methods=["POST"])
+@admin_obrigatorio
+def confirmar_os_pendente(item_id):
+    """Leva a OS para a agenda com o que veio dela + o que foi ajustado no cartão."""
+    pendente = OSPendente.query.get_or_404(item_id)
+    if pendente.status != "nova":
+        return jsonify({"erro": "Essa OS já foi tratada."}), 400
+    ajustes = request.get_json(force=True) or {}
+    dados = dict(pendente.campos)
+    for campo in ("data", "periodo", "tipo_servico", "empresa", "tecnico"):
+        if campo in ajustes:
+            dados[campo] = ajustes[campo]
+    if dados.get("cep") and dados.get("endereco") and dados["cep"] not in dados["endereco"]:
+        dados["endereco"] = f"{dados['endereco']}, {dados['cep']}"
+    dados.update(status="Agendado", valor=0, os_pendente_id=pendente.id)
+    return criar_servico_a_partir_de(dados)
+
+
+@app.route("/api/os-pendentes/<int:item_id>/descartar", methods=["POST"])
+@admin_obrigatorio
+def descartar_os_pendente(item_id):
+    pendente = OSPendente.query.get_or_404(item_id)
+    if pendente.status == "nova":
+        pendente.status = "descartada"
+        db.session.commit()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/servicos/<int:servico_id>", methods=["PUT"])
@@ -560,7 +825,6 @@ def atualizar_servico(servico_id):
     if not data_valida:
         return jsonify({"erro": "Data inválida. Use o formato dd/mm/aaaa."}), 400
 
-    placa = (dados.get("placa") or "").strip().upper()
 
     tipo_servico = (dados.get("tipo_servico") or "").strip()
     empresa = (dados.get("empresa") or "").strip()
@@ -598,7 +862,7 @@ def atualizar_servico(servico_id):
 
     servico.data = data_valida
     servico.periodo = periodo
-    servico.placa = placa
+    aplicar_campos_da_os(servico, dados)
     servico.tipo_servico = tipo_servico
     servico.empresa = empresa
     servico.endereco = (dados.get("endereco") or "").strip()
@@ -697,6 +961,9 @@ def duplicar_servico(servico_id):
         horario=dados.get("horario", original.horario),
         periodo=dados.get("periodo") if dados.get("periodo") in PERIODO_OPCOES else original.periodo,
         placa=original.placa,
+        cliente_nome=original.cliente_nome,
+        cliente_telefone=original.cliente_telefone,
+        veiculo=original.veiculo,
         tipo_servico=original.tipo_servico,
         empresa=original.empresa,
         endereco=original.endereco,
@@ -816,11 +1083,12 @@ def servicos_feitos_do_mes(ano, mes, empresa=""):
     return [item[3] for item in encontrados]
 
 
-COLUNAS_EXPORTACAO = [
+COLUNAS_EXPORTACAO_ANTIGAS = [
     "ID", "Data", "Período", "Horário", "Placa", "Tipo de Serviço", "Empresa", "Endereço",
     "Técnico", "Status", "Valor", "Equipamento Retirado", "Equipamento Instalado",
     "Observações",
 ]
+COLUNAS_EXPORTACAO = COLUNAS_EXPORTACAO_ANTIGAS + ["Nº da OS", "Cliente", "Telefone", "Veículo"]
 
 
 def _estilizar_cabecalho(ws):
@@ -864,6 +1132,7 @@ def exportar_servicos_excel():
             s.endereco or "", s.tecnico or "", s.status, s.valor or 0.0,
             s.equipamento_retirado_codigo or "", s.equipamento_instalado_codigo or "",
             s.observacoes or "",
+            s.numero_os or "", s.cliente_nome or "", s.cliente_telefone or "", s.veiculo or "",
         ])
     for linha in ws.iter_rows(min_row=2, min_col=11, max_col=11):
         linha[0].number_format = 'R$ #,##0.00'
@@ -936,12 +1205,10 @@ def importar_servicos_excel():
         return jsonify({"erro": "Planilha vazia."}), 400
 
     cabecalho = [str(c or "").strip() for c in linhas[0]]
-    esperado = [
-        "ID", "Data", "Período", "Horário", "Placa", "Tipo de Serviço", "Empresa", "Endereço",
-        "Técnico", "Status", "Valor", "Equipamento Retirado", "Equipamento Instalado",
-        "Observações",
-    ]
-    if cabecalho != esperado:
+    cabecalho = cabecalho[:len(COLUNAS_EXPORTACAO)]
+    while cabecalho and not cabecalho[-1]:
+        cabecalho.pop()
+    if cabecalho not in (COLUNAS_EXPORTACAO, COLUNAS_EXPORTACAO_ANTIGAS):
         return jsonify({
             "erro": "As colunas desse arquivo não batem com o formato esperado "
                     "(use um arquivo gerado pelo botão 'Exportar tudo para Excel')."
@@ -953,7 +1220,8 @@ def importar_servicos_excel():
         if not linha or not any(linha):
             continue
         (_, data_str, periodo, horario, placa, tipo_servico, empresa, endereco,
-         tecnico, status, valor, eq_retirado, eq_instalado, observacoes) = (list(linha) + [None] * 14)[:14]
+         tecnico, status, valor, eq_retirado, eq_instalado, observacoes,
+         numero_os, cliente_nome, cliente_telefone, veiculo) = (list(linha) + [None] * 18)[:18]
 
         data_valida = validar_data(str(data_str or "").strip())
         tipo_servico = str(tipo_servico or "").strip()
@@ -985,6 +1253,10 @@ def importar_servicos_excel():
             equipamento_instalado_codigo=str(eq_instalado or "").strip(),
             observacoes=str(observacoes or "").strip(),
         )
+        aplicar_campos_da_os(servico, {
+            "numero_os": numero_os, "cliente_nome": cliente_nome,
+            "cliente_telefone": cliente_telefone, "veiculo": veiculo,
+        })
         db.session.add(servico)
         importados += 1
 
@@ -1094,7 +1366,8 @@ def listar_estoque(empresa):
     resultado = []
     for item in itens:
         dados = item.to_dict()
-        dados["disponivel"] = item.status == "Disponível"  # mantém compatibilidade com os formulários
+        # Aparece como sugestão para instalar: em estoque ou já nas mãos do técnico.
+        dados["disponivel"] = item.status in ("Disponível", STATUS_COM_TECNICO)
         servico_vinculado = buscar_ultima_os_do_equipamento(empresa, item.codigo)
         dados["os_vinculada"] = None
         if servico_vinculado:
@@ -1370,6 +1643,12 @@ def adicionar_colunas_que_faltam():
     (funciona tanto no SQLite quanto no Postgres)."""
     from sqlalchemy import inspect, text
     colunas_novas = {
+        "servicos": [
+            ("numero_os", "VARCHAR(40) DEFAULT ''"),
+            ("cliente_nome", "VARCHAR(150) DEFAULT ''"),
+            ("cliente_telefone", "VARCHAR(30) DEFAULT ''"),
+            ("veiculo", "VARCHAR(150) DEFAULT ''"),
+        ],
         "equipamentos": [
             ("tecnico", "VARCHAR(80) DEFAULT ''"),
             ("retirado_em", "TIMESTAMP"),

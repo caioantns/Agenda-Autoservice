@@ -115,7 +115,7 @@ async function carregarServicosDoDia() {
     item.innerHTML = `
       <div class="item-servico-info">
         <span class="item-servico-titulo">${escaparHtml(s.periodo || "—")} · ${escaparHtml(s.tipo_servico)}</span>
-        <span class="item-servico-sub">${escaparHtml(s.empresa)}${s.endereco ? " · " + escaparHtml(s.endereco) : ""} · ${escaparHtml(s.tecnico || "sem técnico")}</span>
+        <span class="item-servico-sub">${escaparHtml(s.empresa)}${s.cliente_nome ? " · " + escaparHtml(s.cliente_nome) : ""}${s.endereco ? " · " + escaparHtml(s.endereco) : ""} · ${escaparHtml(s.tecnico || "sem técnico")}</span>
       </div>
       <div class="item-servico-lado">
         <span class="chip-status ${STATUS_CLASSES[s.status]}">${escaparHtml(s.status)}</span>
@@ -152,7 +152,9 @@ async function carregarProximos7Dias() {
 
 const CAMPOS_DETALHE = [
   ["Data", "data"], ["Período", "periodo"], ["Tipo de Serviço", "tipo_servico"],
-  ["Empresa", "empresa"], ["Endereço", "endereco"], ["Técnico", "tecnico"], ["Valor", "valor"],
+  ["Empresa", "empresa"], ["Nº da OS", "numero_os"], ["Cliente", "cliente_nome"],
+  ["Telefone", "cliente_telefone"], ["Endereço", "endereco"], ["Placa", "placa"], ["Veículo", "veiculo"],
+  ["Técnico", "tecnico"], ["Valor", "valor"],
   ["Troca de Equipamento", "houve_troca_equipamento"],
   ["Equipamento Retirado", "equipamento_retirado_codigo"], ["Equipamento(s) Instalado(s)", "equipamento_instalado_codigos"],
 ];
@@ -171,6 +173,8 @@ function mostrarDetalhe(id) {
   CAMPOS_DETALHE.forEach(([rotulo, chave]) => {
     // Só mostra a linha de "Troca de Equipamento" quando o tipo é Manutenção.
     if (chave === "houve_troca_equipamento" && !tipoEhManutencao(servico.tipo_servico)) return;
+    // Dados da OS só aparecem quando preenchidos (serviços antigos não têm).
+    if (["numero_os", "cliente_nome", "cliente_telefone", "placa", "veiculo"].includes(chave) && !servico[chave]) return;
 
     const dt = document.createElement("dt");
     dt.textContent = rotulo + ":";
@@ -185,6 +189,9 @@ function mostrarDetalhe(id) {
         : "—";
     } else {
       dd.textContent = servico[chave] || "—";
+      if (chave === "cliente_telefone" && servico.cliente_telefone) {
+        preencherContatoTelefone(dd, servico.cliente_telefone);
+      }
     }
     dl.appendChild(dt);
     dl.appendChild(dd);
@@ -244,6 +251,25 @@ function atualizarNavegacaoEndereco(endereco) {
   document.getElementById("link-google-maps").href = linkGoogleMaps(endereco);
   document.getElementById("link-waze").href = linkWaze(endereco);
   bloco.classList.remove("escondido");
+}
+
+// Telefone do cliente no detalhe: número + botões de ligar e WhatsApp.
+function preencherContatoTelefone(dd, telefone) {
+  const digitos = telefone.replace(/\D/g, "");
+  dd.textContent = telefone + " ";
+  if (digitos.length < 10) return;
+  const ligar = document.createElement("a");
+  ligar.href = `tel:+55${digitos}`;
+  ligar.className = "link-contato";
+  ligar.textContent = "📞 Ligar";
+  const whats = document.createElement("a");
+  whats.href = `https://wa.me/55${digitos}`;
+  whats.target = "_blank";
+  whats.rel = "noopener";
+  whats.className = "link-contato";
+  whats.textContent = "💬 WhatsApp";
+  dd.appendChild(ligar);
+  dd.appendChild(whats);
 }
 
 function fecharDetalhe() {
@@ -313,6 +339,9 @@ function abrirEdicao(statusForcado) {
   selecionarComFallback("e-empresa", servico.empresa);
   document.getElementById("e-endereco").value = servico.endereco || "";
   if (limparCepEdicao) limparCepEdicao();
+  ["numero_os", "cliente_nome", "cliente_telefone", "placa", "veiculo"].forEach((campo) => {
+    document.getElementById(`e-${campo}`).value = servico[campo] || "";
+  });
   selecionarComFallback("e-tecnico", servico.tecnico || "");
   // Se veio de uma tentativa de "Mudar status rápido" que foi barrada por falta
   // de equipamento, abre a edição já com o status desejado (ex: Feito), em vez
@@ -448,6 +477,11 @@ async function salvarEdicao() {
     tipo_servico: tipoServico.trim(),
     empresa: document.getElementById("e-empresa").value.trim(),
     endereco: document.getElementById("e-endereco").value.trim(),
+    numero_os: document.getElementById("e-numero_os").value.trim(),
+    cliente_nome: document.getElementById("e-cliente_nome").value.trim(),
+    cliente_telefone: document.getElementById("e-cliente_telefone").value.trim(),
+    placa: document.getElementById("e-placa").value.trim(),
+    veiculo: document.getElementById("e-veiculo").value.trim(),
     tecnico: document.getElementById("e-tecnico").value.trim(),
     status: status,
     valor: valorNumerico,

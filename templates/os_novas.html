@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block titulo %}OS novas - Agenda Autoservice{% endblock %}
+
+{% block conteudo %}
+<h2 class="titulo-pagina">📥 OS novas</h2>
+
+<div class="cartao importar-os">
+  <div class="importar-os-topo">
+    <div class="importar-os-texto">
+      <strong>Enviar OS para a caixa</strong>
+      <small>
+        Selecione um ou vários PDFs de OS (SAT, CEABS, Zen{% if ia_configurada %}, outros modelos ou fotos{% endif %}).
+        Cada uma vira um cartão abaixo para você conferir e mandar para a agenda.
+      </small>
+    </div>
+    <label for="arquivos-os" class="botao botao-primario botao-importar-os">Escolher arquivos</label>
+  </div>
+  <input type="file" id="arquivos-os" accept="application/pdf,image/*" multiple class="escondido">
+  <p id="caixa-status" class="importar-os-status escondido"></p>
+  <ul id="caixa-resultados" class="caixa-resultados escondido"></ul>
+</div>
+
+<div class="caixa-topo">
+  <span id="caixa-contador">Carregando…</span>
+</div>
+<div id="lista-os-novas" class="lista-os-novas"></div>
+
+<script>
+  window.LISTAS = {{ listas|tojson }};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/os_novas.js') }}"></script>
+{% endblock %}
